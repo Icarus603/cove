@@ -190,6 +190,7 @@ class BoringViewModel: NSObject, ObservableObject {
     }
 
     func open() {
+        if notchState == .closed { AppModules.notchOpened() }
         self.notchSize = openNotchSize
         self.notchState = .open
         
@@ -202,6 +203,7 @@ class BoringViewModel: NSObject, ObservableObject {
         if SharingStateManager.shared.preventNotchClose {
             return
         }
+        if notchState == .open { AppModules.notchClosed() }
         self.notchSize = getClosedNotchSize(screenUUID: self.screenUUID)
         self.closedNotchSize = self.notchSize
         self.notchState = .closed

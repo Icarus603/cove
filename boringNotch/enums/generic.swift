@@ -24,9 +24,15 @@ public enum NotchState {
     case open
 }
 
-public enum NotchViews {
-    case home
-    case shelf
+/// Identifies a notch tab. Backed by a module id so third-party modules can add tabs;
+/// `.home` and `.shelf` keep the original call sites compiling.
+public struct NotchViews: Hashable, Sendable, ExpressibleByStringLiteral {
+    public let id: String
+    public init(id: String) { self.id = id }
+    public init(stringLiteral value: String) { self.id = value }
+
+    public static let home = NotchViews(id: "builtin.home")
+    public static let shelf = NotchViews(id: "builtin.shelf")
 }
 
 enum SettingsEnum {

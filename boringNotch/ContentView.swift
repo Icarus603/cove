@@ -344,13 +344,11 @@ struct ContentView: View {
               .zIndex(2)
             if vm.notchState == .open {
                 VStack {
-                    switch coordinator.currentView {
-                    case .home:
-                        NotchHomeView(albumArtNamespace: albumArtNamespace)
-                    case .shelf:
-                        ShelfView()
+                    if let module = AppModules.registry.selected {
+                        module.makeExpandedView()
                     }
                 }
+                .environment(\.albumArtNamespace, albumArtNamespace)
                 .transition(
                     .scale(scale: 0.8, anchor: .top)
                     .combined(with: .opacity)
