@@ -9,6 +9,17 @@ import Combine
 import Defaults
 import SwiftUI
 
+#if DEBUG
+/// Debug builds: with COVE_SNAPSHOT_DIR set, who opened or closed the notch is appended to a file.
+func traceNotch(_ event: String) {
+    guard let dir = ProcessInfo.processInfo.environment["COVE_SNAPSHOT_DIR"] else { return }
+    let text = "== \(event) @ \(Date().timeIntervalSince1970)\n" + Thread.callStackSymbols.dropFirst(2).prefix(14).joined(separator: "\n") + "\n"
+    let url = URL(fileURLWithPath: dir + "/trace.txt")
+    if let handle = try? FileHandle(forWritingTo: url) { handle.seekToEndOfFile(); handle.write(Data(text.utf8)); try? handle.close() }
+    else { try? text.write(to: url, atomically: true, encoding: .utf8) }
+}
+#endif
+
 class BoringViewModel: NSObject, ObservableObject {
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @ObservedObject var detector = FullscreenMediaDetector.shared
@@ -58,6 +69,12 @@ class BoringViewModel: NSObject, ObservableObject {
         self.screenUUID = screenUUID
         notchSize = getClosedNotchSize(screenUUID: screenUUID)
         closedNotchSize = notchSize
+
+        // A module can ask for more room (games); follow tab switches and module changes while open.
+        AppModules.registry.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.refreshOpenSize() } }
+            .store(in: &cancellables)
 
         Publishers.CombineLatest3($dropZoneTargeting, $dragDetectorTargeting, $generalDropTargeting)
             .map { shelf, drag, general in
@@ -190,15 +207,38 @@ class BoringViewModel: NSObject, ObservableObject {
     }
 
     func open() {
+        #if DEBUG
+        traceNotch("open")
+        #endif
+        // The mascot beside the closed notch is the Agents tab's live activity, like the album art is
+        // Home's: opening the notch from it lands on that tab. An explicit choice (a request that needs
+        // you, a file dragged onto the shelf) has already moved off Home and is left alone.
+        if notchState == .closed, coordinator.currentView == .home,
+           AppModules.agentBarShown(
+               musicActive: MusicManager.shared.isPlaying || !MusicManager.shared.isPlayerIdle,
+               musicLiveActivityEnabled: coordinator.musicLiveActivityEnabled)
+        {
+            coordinator.currentView = NotchViews(id: AppModules.agents.id)
+        }
         if notchState == .closed { AppModules.notchOpened() }
-        self.notchSize = openNotchSize
+        self.notchSize = AppModules.openSize()
         self.notchState = .open
         
         // Force music information update when notch is opened
         MusicManager.shared.forceUpdate()
     }
 
+    private func refreshOpenSize() {
+        guard notchState == .open else { return }
+        let target = AppModules.openSize()
+        guard target != notchSize else { return }
+        withAnimation(animation) { notchSize = target }
+    }
+
     func close() {
+        #if DEBUG
+        traceNotch("close")
+        #endif
         // Do not close while a share picker or sharing service is active
         if SharingStateManager.shared.preventNotchClose {
             return

@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Holds the modules the host knows about and which tab is selected.
@@ -8,6 +9,7 @@ public final class ModuleRegistry: ObservableObject {
     @Published public private(set) var disabledIDs: Set<String>
 
     private var activated = false
+    private var subscriptions: [String: AnyCancellable] = [:]
     /// False until `select(id:)` succeeds; until then the default tracks the first visible module.
     private var userChoseTab = false
 
@@ -34,6 +36,7 @@ public final class ModuleRegistry: ObservableObject {
 
     /// Registers a module. Registering an existing id replaces it in place.
     public func register(_ module: any NotchModule) {
+        subscriptions[module.id] = module.changes.sink { [weak self] in self?.objectWillChange.send() }
         if let index = modules.firstIndex(where: { $0.id == module.id }) {
             if module.id == selectedID, activated { modules[index].deactivate() }
             modules[index] = module
@@ -45,6 +48,7 @@ public final class ModuleRegistry: ObservableObject {
     }
 
     public func unregister(id: String) {
+        subscriptions[id] = nil
         if id == selectedID, activated { selected?.deactivate() }
         modules.removeAll { $0.id == id }
         if selectedID == id { selectedID = visibleModules.first?.id }

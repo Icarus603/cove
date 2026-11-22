@@ -9,13 +9,16 @@ import SwiftUI
 import Defaults
 
 extension Color {
+    /// Cove azure, the app's own accent when the user has not picked a custom colour.
+    static let coveAccent = Color(red: 0.29, green: 0.37, blue: 0.91)
+
     static var effectiveAccent: Color {
         if Defaults[.useCustomAccentColor],
            let colorData = Defaults[.customAccentColorData],
            let nsColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: colorData) {
             return Color(nsColor: nsColor)
         }
-        return .accentColor
+        return Color.coveAccent
     }
     
     /// Returns a darker version of the accent color suitable for backgrounds
@@ -30,13 +33,15 @@ extension Color {
 }
 
 extension NSColor {
+    static let coveAccent = NSColor(srgbRed: 0.29, green: 0.37, blue: 0.91, alpha: 1)
+
     static var effectiveAccent: NSColor {
         if Defaults[.useCustomAccentColor],
            let colorData = Defaults[.customAccentColorData],
            let nsColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: colorData) {
             return nsColor
         }
-        return NSColor.controlAccentColor
+        return NSColor.coveAccent
     }
     
     /// Returns a darker version of the accent color as NSColor suitable for backgrounds

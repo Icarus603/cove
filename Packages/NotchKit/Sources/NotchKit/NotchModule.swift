@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// How urgently a module wants the user's eyes. The host uses this to decide
@@ -41,6 +42,11 @@ public protocol NotchModule: AnyObject {
     var tabOrder: Int { get }
     var attention: ModuleAttention { get }
     var closedAccessory: ClosedAccessory? { get }
+    /// Size the host should give the expanded notch while this module is selected
+    /// (the content area, below the tab bar). `nil` keeps the host's default.
+    var preferredContentSize: CGSize? { get }
+    /// Fires whenever `attention` or `closedAccessory` may have changed, so the host re-reads them.
+    var changes: AnyPublisher<Void, Never> { get }
 
     /// Content shown when the notch is open and this module's tab is selected.
     func makeExpandedView() -> AnyView
@@ -55,6 +61,8 @@ public extension NotchModule {
     var tabOrder: Int { 100 }
     var attention: ModuleAttention { .none }
     var closedAccessory: ClosedAccessory? { nil }
+    var changes: AnyPublisher<Void, Never> { Empty().eraseToAnyPublisher() }
+    var preferredContentSize: CGSize? { nil }
     func activate() {}
     func deactivate() {}
 }

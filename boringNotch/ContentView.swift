@@ -58,6 +58,31 @@ struct ContentView: View {
         )
     }
 
+    @ObservedObject private var moduleRegistry = AppModules.registry
+
+    /// CodeIsland's collapsed bar (mascot beside the notch) shows while agents work or wait, and while
+    /// nothing else (music) is using the closed notch.
+    private var agentBarShown: Bool {
+        guard vm.notchState == .closed, !vm.hideOnClosed else { return false }
+        _ = moduleRegistry // redraw when agents change
+        return AppModules.agentBarShown(
+            musicActive: musicManager.isPlaying || !musicManager.isPlayerIdle,
+            musicLiveActivityEnabled: coordinator.musicLiveActivityEnabled
+        )
+    }
+
+    @ViewBuilder
+    private func agentCompactBar() -> some View {
+        let screen = vm.screenUUID.flatMap { NSScreen.screen(withUUID: $0) } ?? NSScreen.main
+        AppModules.agents.makeCompactBar(
+            notchWidth: vm.closedNotchSize.width,
+            notchHeight: vm.effectiveClosedNotchHeight,
+            screenWidth: screen?.frame.width ?? 1440,
+            hasNotch: (screen?.safeAreaInsets.top ?? 0) > 0
+        )
+        .transition(.opacity)
+    }
+
     private var computedChinWidth: CGFloat {
         var chinWidth: CGFloat = vm.closedNotchSize.width
 
@@ -118,7 +143,7 @@ struct ContentView: View {
                     )
                 
                 mainLayout
-                    .frame(height: vm.notchState == .open ? vm.notchSize.height : nil)
+                    .frame(height: vm.notchState == .open ? vm.notchSize.height : nil, alignment: .top)
                     .conditionalModifier(true) { view in
                         let openAnimation = Animation.spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
                         let closeAnimation = Animation.spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
@@ -203,7 +228,19 @@ struct ContentView: View {
             }
         }
         .padding(.bottom, 8)
-        .frame(maxWidth: windowSize.width, maxHeight: windowSize.height, alignment: .top)
+        .overlay(alignment: .top) {
+            if vm.notchState == .closed {
+                ClosedAccessoryBar(notchWidth: vm.closedNotchSize.width, height: vm.closedNotchSize.height)
+            }
+        }
+        // The window is big enough for the largest open tab (games), but anything laid out with Spacers while the notch
+        // is closed (the first-launch welcome) must not stretch to fill it: it keeps the original height.
+        .frame(maxWidth: windowSize.width,
+               maxHeight: vm.notchState == .open ? windowSize.height : openNotchSize.height + shadowPadding,
+               alignment: .top)
+        // The window never resizes itself (see createBoringNotchWindow), so the content fills it and hangs from its top
+        // edge whatever its own height is; otherwise the hosting view centers short content and the notch floats.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .compositingGroup()
         .scaleEffect(
             x: gestureScale,
@@ -287,6 +324,8 @@ struct ContentView: View {
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(.opacity)
+                      } else if agentBarShown {
+                          agentCompactBar()
                       } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music) && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed {
                           MusicLiveActivity()
                               .frame(alignment: .center)
@@ -346,6 +385,8 @@ struct ContentView: View {
                 VStack {
                     if let module = AppModules.registry.selected {
                         module.makeExpandedView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            .clipped()
                     }
                 }
                 .environment(\.albumArtNamespace, albumArtNamespace)

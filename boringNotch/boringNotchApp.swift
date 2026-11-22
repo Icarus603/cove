@@ -22,23 +22,22 @@ struct DynamicNotchApp: App {
 
     init() {
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+            startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
 
         // Initialize the settings window controller with the updater controller
         SettingsWindowController.shared.setUpdaterController(updaterController)
     }
 
     var body: some Scene {
-        MenuBarExtra("boring.notch", systemImage: "sparkle", isInserted: $showMenuBarIcon) {
+        MenuBarExtra("Cove", image: "MenuBarCove", isInserted: $showMenuBarIcon) {
             Button("Settings") {
                 DispatchQueue.main.async {
                     SettingsWindowController.shared.showWindow()
                 }
             }
             .keyboardShortcut(KeyEquivalent(","), modifiers: .command)
-            CheckForUpdatesView(updater: updaterController.updater)
             Divider()
-            Button("Restart Boring Notch") {
+            Button("Restart Cove") {
                 ApplicationRelauncher.restart()
             }
             Button("Quit", role: .destructive) {
@@ -50,6 +49,9 @@ struct DynamicNotchApp: App {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    /// `NSApp.delegate` is SwiftUI's adaptor wrapper, so code outside the class reaches the real delegate here.
+    static weak var current: AppDelegate?
+
     var statusItem: NSStatusItem?
     var windows: [String: NSWindow] = [:] // UUID -> NSWindow
     var viewModels: [String: BoringViewModel] = [:] // UUID -> BoringViewModel
@@ -72,7 +74,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    /// Opens the notch on every screen it is shown on, for requests that need the user (approvals).
+    func openNotchEverywhere() {
+        if Defaults[.showOnAllDisplays] {
+            viewModels.values.forEach { $0.open() }
+        } else {
+            vm.open()
+        }
+    }
+
+    func closeNotchEverywhere() {
+        vm.close()
+        viewModels.values.forEach { $0.close() }
+    }
+
+    /// The pointer is over the notch window, so closing it would be rude.
+    var isPointerOverNotch: Bool {
+        let location = NSEvent.mouseLocation
+        return NSApp.windows.contains { $0 is BoringNotchSkyLightWindow && $0.frame.contains(location) }
+    }
+
+    var isAnyNotchOpen: Bool {
+        vm.notchState == .open || viewModels.values.contains { $0.notchState == .open }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        AppModules.shutdown()
         NotificationCenter.default.removeObserver(self)
         if let observer = screenLockedObserver {
             DistributedNotificationCenter.default().removeObserver(observer)
@@ -244,10 +271,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.disableSkyLight()
         }
 
-        window.contentView = NSHostingView(
+        let hosting = NSHostingView(
             rootView: ContentView()
                 .environmentObject(viewModel)
         )
+        // The window keeps the size and top-edge position given here. Left to itself the hosting view resizes the
+        // window to the SwiftUI content's limits, which made the notch jump, float below the menu bar or grow off screen.
+        hosting.sizingOptions = []
+        window.contentView = hosting
 
         window.orderFrontRegardless()
         NotchSpaceManager.shared.notchSpace.windows.insert(window)
@@ -280,6 +311,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppDelegate.current = self
+        // Agents must be listening for hooks from launch, not from the first time the notch opens.
+        AppModules.bootstrap()
+        #if DEBUG
+        UISnapshot.runIfRequested()
+        #endif
 
         NotificationCenter.default.addObserver(
             self,
@@ -426,7 +463,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 self.showOnboardingWindow()
             }
-            playWelcomeSound()
         } else if MusicManager.shared.isNowPlayingDeprecated
             && Defaults[.mediaController] == .nowPlaying
         {

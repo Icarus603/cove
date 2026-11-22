@@ -15,4 +15,12 @@ extension KeyboardShortcuts.Name {
     static let increaseBacklight = Self("increaseBacklight", default: .init(.f2, modifiers: [.command]))
     static let toggleSneakPeek = Self("toggleSneakPeek", default: .init(.h, modifiers: [.command, .shift]))
     static let toggleNotchOpen = Self("toggleNotchOpen", default: .init(.i, modifiers: [.command, .shift]))
+
+    // Coding agents: unbound until the user records a key.
+    static let agentToggle = Self("agentToggle")
+    static let agentApprove = Self("agentApprove")
+    static let agentApproveAlways = Self("agentApproveAlways")
+    static let agentDeny = Self("agentDeny")
+    static let agentSkipQuestion = Self("agentSkipQuestion")
+    static let agentJumpToTerminal = Self("agentJumpToTerminal")
 }

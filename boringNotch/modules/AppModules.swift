@@ -2,21 +2,97 @@
 //  AppModules.swift
 //  boringNotch
 //
-//  Hosts the NotchKit registry and the built-in modules.
+//  Hosts the NotchKit registry, the built-in modules, agents, games and plugins.
 //
 
+import AgentHub
+import AppKit
+import Combine
+import KeyboardShortcuts
 import NotchKit
+import PluginKit
 import SwiftUI
 
 @MainActor
 enum AppModules {
+    static let disabledKey = "modules.disabled"
+
+    /// Kept so the closed notch can draw CodeIsland's collapsed bar from it.
+    static let agents = AgentsModule()
+
     /// The one registry shared by every screen's notch.
     static let registry: ModuleRegistry = {
-        let registry = ModuleRegistry()
+        let disabled = Set(UserDefaults.standard.stringArray(forKey: disabledKey) ?? [])
+        let registry = ModuleRegistry(disabledIDs: disabled)
         registry.register(HomeModule())
         registry.register(ShelfModule())
+        registry.register(agents)
         return registry
     }()
+
+    /// Third-party modules: external programs in the plugins folder, each switched on by the user.
+    static let plugins: PluginManager = {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Cove"
+        return PluginManager(directory: support.appendingPathComponent(name).appendingPathComponent("Plugins"), registry: registry)
+    }()
+
+    private static var cancellables = Set<AnyCancellable>()
+    private static var lastAttention: ModuleAttention = .none
+    /// The notch was opened by a module that needed the user, not by the user.
+    private static var openedForAttention = false
+    private static var bootstrapped = false
+
+    static func bootstrap() {
+        guard !bootstrapped else { return }
+        bootstrapped = true
+        _ = registry
+        plugins.reload()
+
+        AgentRuntime.shared.presentHost = { present(moduleID: "builtin.agents") }
+        AgentRuntime.shared.isHostOnScreen = { AppDelegate.current?.isAnyNotchOpen ?? false }
+
+        // Agent shortcuts are recorded in Settings → Shortcuts like the host's own.
+        let bindings: [(KeyboardShortcuts.Name, AgentRuntime.Shortcut)] = [
+            (.agentToggle, .togglePanel), (.agentApprove, .approve), (.agentApproveAlways, .approveAlways),
+            (.agentDeny, .deny), (.agentSkipQuestion, .skipQuestion), (.agentJumpToTerminal, .jumpToTerminal),
+        ]
+        for (name, action) in bindings {
+            KeyboardShortcuts.onKeyDown(for: name) { AgentRuntime.shared.perform(action) }
+        }
+
+        // A module that needs the user (an approval, a question) brings the notch up on its tab.
+        registry.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { _ in DispatchQueue.main.async { handleAttentionChange() } }
+            .store(in: &cancellables)
+    }
+
+    static func shutdown() {
+        plugins.shutdown()
+        AgentRuntime.shared.stop()
+    }
+
+    private static func handleAttentionChange() {
+        let top = registry.topAttention
+        let level = top?.level ?? .none
+        defer { lastAttention = level }
+        if level != .needsInput, lastAttention == .needsInput, openedForAttention {
+            // The request was answered. Fold the notch away again unless the user is using it.
+            openedForAttention = false
+            if let delegate = AppDelegate.current, !delegate.isPointerOverNotch { delegate.closeNotchEverywhere() }
+            return
+        }
+        guard level == .needsInput, lastAttention != .needsInput, let module = top?.module else { return }
+        present(moduleID: module.id)
+    }
+
+    static func present(moduleID: String) {
+        BoringViewCoordinator.shared.currentView = NotchViews(id: moduleID)
+        let wasOpen = AppDelegate.current?.isAnyNotchOpen ?? false
+        AppDelegate.current?.openNotchEverywhere()
+        if !wasOpen { openedForAttention = true }
+    }
 
     // One view model exists per screen but the registry is shared, so modules
     // go live when the first notch opens and pause when the last one closes.
@@ -31,6 +107,29 @@ enum AppModules {
         guard openNotchCount > 0 else { return }
         openNotchCount -= 1
         if openNotchCount == 0 { registry.notchDidClose() }
+    }
+
+    /// Persists the switch for a module tab.
+    static func setEnabled(_ enabled: Bool, id: String) {
+        registry.setEnabled(enabled, id: id)
+        UserDefaults.standard.set(registry.disabledIDs.sorted(), forKey: disabledKey)
+    }
+
+    /// The Agents tab shows CodeIsland's collapsed bar (the mascot) beside the closed notch: while an agent
+    /// works or waits, and while nothing else (music) is using the closed notch.
+    static func agentBarShown(musicActive: Bool, musicLiveActivityEnabled: Bool) -> Bool {
+        guard !registry.disabledIDs.contains(agents.id), agents.isCompactBarVisible else { return false }
+        return agents.isCompactBarBusy || !(musicActive && musicLiveActivityEnabled)
+    }
+
+    /// Size of the open notch: the default, or what the selected module asks for.
+    static func openSize() -> CGSize {
+        guard let content = registry.selected?.preferredContentSize else { return openNotchSize }
+        let headerAllowance: CGFloat = 44
+        return CGSize(
+            width: min(max(content.width + 40, openNotchSize.width), maxOpenNotchSize.width),
+            height: min(max(content.height + headerAllowance, openNotchSize.height), maxOpenNotchSize.height)
+        )
     }
 }
 
@@ -53,7 +152,7 @@ extension EnvironmentValues {
 @MainActor
 final class HomeModule: NotchModule {
     let id = NotchViews.home.id
-    let title = "Home"
+    var title: String { String(localized: "Home") }
     let systemImage = "house.fill"
     let tabOrder = 0
 
@@ -72,7 +171,7 @@ private struct HomeModuleView: View {
 @MainActor
 final class ShelfModule: NotchModule {
     let id = NotchViews.shelf.id
-    let title = "Shelf"
+    var title: String { String(localized: "Shelf") }
     let systemImage = "tray.fill"
     let tabOrder = 10
 

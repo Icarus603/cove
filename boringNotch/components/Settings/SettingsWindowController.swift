@@ -40,7 +40,7 @@ class SettingsWindowController: NSWindowController {
     private func setupWindow() {
         guard let window = window else { return }
         
-        window.title = "Boring Notch Settings"
+        window.title = "Cove Settings"
         window.titlebarAppearsTransparent = false
         window.titleVisibility = .visible
         window.toolbarStyle = .unified
@@ -60,7 +60,12 @@ class SettingsWindowController: NSWindowController {
         // Create the SwiftUI content
         let settingsView = SettingsView(updaterController: updaterController)
         let hostingView = NSHostingView(rootView: settingsView)
+        // The window keeps its own size; a long page (Agents) scrolls inside it instead of stretching the window
+        // to the content's full height, which ran off the bottom of the screen.
+        hostingView.sizingOptions = []
         window.contentView = hostingView
+        window.contentMinSize = NSSize(width: 700, height: 480)
+        if window.frame.height < 520 || window.frame.width < 700 { window.setContentSize(NSSize(width: 700, height: 600)) }
         
         // Handle window closing
         window.delegate = self
@@ -79,6 +84,10 @@ class SettingsWindowController: NSWindowController {
         }
         
         // Show the window with proper ordering
+        // Never taller than the screen it opens on.
+        if let window, let visible = (window.screen ?? NSScreen.main)?.visibleFrame, window.frame.height > visible.height - 40 {
+            window.setContentSize(NSSize(width: window.contentView?.frame.width ?? 700, height: max(480, visible.height - 120)))
+        }
         window?.orderFrontRegardless()
         window?.makeKeyAndOrderFront(nil)
         window?.center()

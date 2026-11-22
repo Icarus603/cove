@@ -24,44 +24,38 @@ struct SettingsView: View {
         self.updaterController = updaterController
     }
 
+    private static let sidebarGroups: [(title: LocalizedStringKey, items: [(id: String, title: LocalizedStringKey, icon: String)])] = [
+        ("Notch", [
+            ("General", "General", "gear"),
+            ("Appearance", "Appearance", "eye"),
+            ("Modules", "Modules", "square.grid.2x2"),
+        ]),
+        ("Features", [
+            ("Media", "Media", "play.laptopcomputer"),
+            ("Calendar", "Calendar", "calendar"),
+            ("HUD", "HUDs", "dial.medium.fill"),
+            ("Battery", "Battery", "battery.100.bolt"),
+            ("Shelf", "Shelf", "books.vertical"),
+            ("Agents", "Agents", "sparkles"),
+        ]),
+        ("More", [
+            ("Shortcuts", "Shortcuts", "keyboard"),
+            ("Advanced", "Advanced", "gearshape.2"),
+            ("About", "About", "info.circle"),
+        ]),
+    ]
+
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedTab) {
-                NavigationLink(value: "General") {
-                    Label("General", systemImage: "gear")
-                }
-                NavigationLink(value: "Appearance") {
-                    Label("Appearance", systemImage: "eye")
-                }
-                NavigationLink(value: "Media") {
-                    Label("Media", systemImage: "play.laptopcomputer")
-                }
-                NavigationLink(value: "Calendar") {
-                    Label("Calendar", systemImage: "calendar")
-                }
-                NavigationLink(value: "HUD") {
-                    Label("HUDs", systemImage: "dial.medium.fill")
-                }
-                NavigationLink(value: "Battery") {
-                    Label("Battery", systemImage: "battery.100.bolt")
-                }
-//                NavigationLink(value: "Downloads") {
-//                    Label("Downloads", systemImage: "square.and.arrow.down")
-//                }
-                NavigationLink(value: "Shelf") {
-                    Label("Shelf", systemImage: "books.vertical")
-                }
-                NavigationLink(value: "Shortcuts") {
-                    Label("Shortcuts", systemImage: "keyboard")
-                }
-                // NavigationLink(value: "Extensions") {
-                //     Label("Extensions", systemImage: "puzzlepiece.extension")
-                // }
-                NavigationLink(value: "Advanced") {
-                    Label("Advanced", systemImage: "gearshape.2")
-                }
-                NavigationLink(value: "About") {
-                    Label("About", systemImage: "info.circle")
+                ForEach(Self.sidebarGroups.indices, id: \.self) { index in
+                    Section(Self.sidebarGroups[index].title) {
+                        ForEach(Self.sidebarGroups[index].items, id: \.id) { item in
+                            NavigationLink(value: item.id) {
+                                Label(item.title, systemImage: item.icon)
+                            }
+                        }
+                    }
                 }
             }
             .listStyle(SidebarListStyle())
@@ -87,8 +81,10 @@ struct SettingsView: View {
                     Shelf()
                 case "Shortcuts":
                     Shortcuts()
-                case "Extensions":
-                    GeneralSettings()
+                case "Modules":
+                    ModulesSettings()
+                case "Agents":
+                    AgentsSettings()
                 case "Advanced":
                     Advanced()
                 case "About":
@@ -865,8 +861,6 @@ struct About: View {
                     Text("Version info")
                 }
 
-                UpdaterSettingsView(updater: updaterController.updater)
-
                 HStack(spacing: 30) {
                     Spacer(minLength: 0)
                     Button {
@@ -889,7 +883,7 @@ struct About: View {
             }
             VStack(spacing: 0) {
                 Divider()
-                Text("Made with 🫶🏻 by not so boring not.people")
+                Text("Built on open source: Boring.Notch (GPL-3.0), CodeIsland, NotchGames and NotchBasket (MIT).")
                     .foregroundStyle(.secondary)
                     .padding(.top, 5)
                     .padding(.bottom, 7)
@@ -903,7 +897,6 @@ struct About: View {
             //                openWindow(id: "onboarding")
             //            }
             //            .controlSize(.extraLarge)
-            CheckForUpdatesView(updater: updaterController.updater)
         }
         .navigationTitle("About")
     }
@@ -1739,6 +1732,21 @@ struct Shortcuts: View {
             }
             Section {
                 KeyboardShortcuts.Recorder("Toggle Notch Open:", name: .toggleNotchOpen)
+            }
+            Section {
+                KeyboardShortcuts.Recorder("Show Agents:", name: .agentToggle)
+                KeyboardShortcuts.Recorder("Approve:", name: .agentApprove)
+                KeyboardShortcuts.Recorder("Always Allow:", name: .agentApproveAlways)
+                KeyboardShortcuts.Recorder("Deny:", name: .agentDeny)
+                KeyboardShortcuts.Recorder("Skip Question:", name: .agentSkipQuestion)
+                KeyboardShortcuts.Recorder("Jump to Terminal:", name: .agentJumpToTerminal)
+            } header: {
+                Text("Agents")
+            } footer: {
+                Text("Approve, deny and skip act on the request shown in the notch; if it is hidden they bring it up instead.")
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
             }
         }
         .accentColor(.effectiveAccent)

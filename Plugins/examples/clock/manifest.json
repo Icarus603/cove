@@ -1,0 +1,7 @@
+{
+  "id": "app.cove.example.clock",
+  "name": { "default": "Clock", "zh-Hant": "時鐘", "zh-Hans": "时钟", "ja": "時計" },
+  "symbol": "clock",
+  "executable": "run.sh",
+  "order": 300
+}

@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import Testing
 @testable import NotchKit
@@ -96,5 +97,34 @@ struct ModuleRegistryTests {
         #expect(r.selectedID == "b")
         r.unregister(id: "b")
         #expect(r.selectedID == nil)
+    }
+}
+
+@MainActor
+private final class ChattyModule: NotchModule {
+    let id = "chatty"
+    let title = "chatty"
+    let systemImage = "circle"
+    let subject = PassthroughSubject<Void, Never>()
+    var changes: AnyPublisher<Void, Never> { subject.eraseToAnyPublisher() }
+    func makeExpandedView() -> AnyView { AnyView(EmptyView()) }
+}
+
+@MainActor
+struct ModuleChangeTests {
+    @Test func moduleChangesPublishThroughRegistry() {
+        let registry = ModuleRegistry()
+        let module = ChattyModule()
+        registry.register(module)
+        var fired = 0
+        let cancellable = registry.objectWillChange.sink { fired += 1 }
+        module.subject.send()
+        module.subject.send()
+        #expect(fired == 2)
+        registry.unregister(id: "chatty")
+        let afterUnregister = fired // unregistering itself publishes the module list change
+        module.subject.send()
+        #expect(fired == afterUnregister)
+        cancellable.cancel()
     }
 }
