@@ -57,6 +57,43 @@ func notchPath(left: CGFloat, right: CGFloat, top: CGFloat, bottom: CGFloat, fil
     return p
 }
 
+/// An open ring, its gap at the top where the notch sits. Centred on (cx, cy).
+func ringPath(cx: CGFloat, cy: CGFloat, radius r: CGFloat, gap: CGFloat) -> CGPath {
+    let p = CGMutablePath()
+    let top = CGFloat.pi / 2
+    p.addArc(center: CGPoint(x: cx, y: cy), radius: r, startAngle: top - gap, endAngle: top + gap, clockwise: true)
+    return p
+}
+
+func mix(_ a: UInt32, _ b: UInt32, _ t: CGFloat) -> UInt32 {
+    func ch(_ v: UInt32, _ s: UInt32) -> CGFloat { CGFloat((v >> s) & 0xFF) }
+    func m(_ s: UInt32) -> UInt32 { UInt32(ch(a, s) + (ch(b, s) - ch(a, s)) * t) << s }
+    return m(16) | m(8) | m(0)
+}
+
+/// Spectrum across the fan, left to right.
+func spectrum(_ t: CGFloat) -> UInt32 {
+    let stops: [UInt32] = [0xff5fa2, 0xb05cff, 0x4f7dff, 0x2fd8f0, 0x5dffc2]
+    let x = min(max(t, 0), 1) * CGFloat(stops.count - 1)
+    let i = min(Int(x), stops.count - 2)
+    return mix(stops[i], stops[i + 1], x - CGFloat(i))
+}
+
+/// A headland on the left; `mirror` flips it about the vertical centre line so the cove stays symmetric.
+func headland(_ pts: [(CGFloat, CGFloat)], mirror: Bool) -> CGPath {
+    func X(_ x: CGFloat) -> CGFloat { mirror ? 1024 - x : x }
+    let p = CGMutablePath()
+    p.move(to: CGPoint(x: X(pts[0].0), y: pts[0].1))
+    var i = 1
+    while i + 2 < pts.count + 0 {
+        p.addCurve(to: CGPoint(x: X(pts[i + 2].0), y: pts[i + 2].1),
+                   control1: CGPoint(x: X(pts[i].0), y: pts[i].1), control2: CGPoint(x: X(pts[i + 1].0), y: pts[i + 1].1))
+        i += 3
+    }
+    p.closeSubpath()
+    return p
+}
+
 func drawAppIcon(_ ctx: CGContext, size S: CGFloat) {
     let k = S / 1024
     ctx.saveGState()
@@ -65,73 +102,91 @@ func drawAppIcon(_ ctx: CGContext, size S: CGFloat) {
     let body = CGRect(x: 100, y: 100, width: 824, height: 824)
     let shape = CGPath(roundedRect: body, cornerWidth: 184, cornerHeight: 184, transform: nil)
     ctx.saveGState()
-    ctx.setShadow(offset: CGSize(width: 0, height: -12), blur: 24, color: rgb(0x000000, 0.4))
-    ctx.addPath(shape); ctx.setFillColor(rgb(0x2a3fb8)); ctx.fillPath()
+    ctx.setShadow(offset: CGSize(width: 0, height: -14), blur: 30, color: rgb(0x000000, 0.45))
+    ctx.addPath(shape); ctx.setFillColor(rgb(0x0a0a28)); ctx.fillPath()
     ctx.restoreGState()
 
     ctx.saveGState()
     ctx.addPath(shape); ctx.clip()
-    // The cove: a sea-coloured gradient, light at the surface and deep below.
-    ctx.drawLinearGradient(gradient([rgb(0x2fe0c0), rgb(0x2d8fe8), rgb(0x4a37d4)], [0.0, 0.45, 1.0]),
-                           start: CGPoint(x: 200, y: 924), end: CGPoint(x: 824, y: 100), options: [])
-    ctx.drawRadialGradient(gradient([rgb(0xffffff, 0.35), rgb(0xffffff, 0)]),
-                           startCenter: CGPoint(x: 512, y: 930), startRadius: 0, endCenter: CGPoint(x: 512, y: 930), endRadius: 560, options: [])
-    // Soft ripples around the notch.
-    let radii: [CGFloat] = [440, 540, 640]
-    for (i, r) in radii.enumerated() {
-        ctx.setStrokeColor(rgb(0xffffff, 0.10 - CGFloat(i) * 0.025)); ctx.setLineWidth(5)
-        ctx.strokeEllipse(in: CGRect(x: 512 - r, y: 800 - r, width: r * 2, height: r * 2))
-    }
+    let horizon: CGFloat = 520
 
-    // The notch, opened: black, hanging from the top edge.
-    let notch = notchPath(left: 232, right: 792, top: 924, bottom: 520, fillet: 70, radius: 120)
+    // Night sky, warming to violet and rose at the horizon.
+    ctx.drawLinearGradient(gradient([rgb(0x0d0a2e), rgb(0x24195f), rgb(0x6a3a9c), rgb(0xd77aa8)], [0, 0.45, 0.8, 1]),
+                           start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: horizon), options: [])
+    // Stars, kept off the centre so the moon reads alone.
+    let stars: [(CGFloat, CGFloat, CGFloat)] = [(210, 800, 5), (300, 700, 4), (170, 640, 3), (380, 770, 3), (150, 740, 4),
+                                                 (800, 790, 5), (720, 690, 4), (860, 650, 3), (650, 780, 3), (880, 730, 4), (250, 590, 3), (780, 600, 3)]
+    for (x, y, r) in stars {
+        ctx.setFillColor(rgb(0xffffff, 0.8)); ctx.fillEllipse(in: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2))
+    }
+    // Moon with a wide halo.
+    let moon = CGPoint(x: 512, y: 690)
+    ctx.drawRadialGradient(gradient([rgb(0xdfe6ff, 0.55), rgb(0xa99cff, 0.18), rgb(0xa99cff, 0)], [0, 0.4, 1]),
+                           startCenter: moon, startRadius: 0, endCenter: moon, endRadius: 300, options: [])
     ctx.saveGState()
-    ctx.setShadow(offset: CGSize(width: 0, height: -16), blur: 34, color: rgb(0x050a30, 0.55))
-    ctx.addPath(notch); ctx.setFillColor(rgb(0x07080d)); ctx.fillPath()
+    ctx.addEllipse(in: CGRect(x: moon.x - 82, y: moon.y - 82, width: 164, height: 164)); ctx.clip()
+    ctx.drawLinearGradient(gradient([rgb(0xffffff), rgb(0xd9e0ff)]), start: CGPoint(x: moon.x, y: moon.y + 82), end: CGPoint(x: moon.x, y: moon.y - 82), options: [])
     ctx.restoreGState()
-    ctx.addPath(notch); ctx.setStrokeColor(rgb(0xffffff, 0.14)); ctx.setLineWidth(3); ctx.strokePath()
 
-    // The tab bar inside it: four tabs, the third one selected.
-    let tabs: [(UInt32, CGFloat)] = [(0x5ef0c8, 372), (0x6cc4ff, 462), (0xff8a6b, 562), (0xffd166, 662)]
-    for (i, tab) in tabs.enumerated() {
-        let c = CGPoint(x: tab.1, y: 800)
-        if i == 2 {
-            ctx.setFillColor(rgb(0xffffff, 0.10))
-            ctx.addPath(CGPath(roundedRect: CGRect(x: c.x - 62, y: c.y - 40, width: 124, height: 80), cornerWidth: 40, cornerHeight: 40, transform: nil)); ctx.fillPath()
-        }
-        ctx.setFillColor(rgb(tab.0)); ctx.fillEllipse(in: CGRect(x: c.x - 26, y: c.y - 26, width: 52, height: 52))
-        ctx.setFillColor(rgb(0xffffff, 0.45)); ctx.fillEllipse(in: CGRect(x: c.x - 11, y: c.y + 2, width: 18, height: 18))
+    // Sea.
+    ctx.saveGState()
+    ctx.clip(to: CGRect(x: 100, y: 100, width: 824, height: horizon - 100))
+    ctx.drawLinearGradient(gradient([rgb(0x3c3fa0), rgb(0x1a2275), rgb(0x080b2a)], [0, 0.4, 1]),
+                           start: CGPoint(x: 512, y: horizon), end: CGPoint(x: 512, y: 100), options: [])
+    // The moon's path on the water: bars that narrow and fade downwards.
+    for i in 0..<12 {
+        let t = CGFloat(i) / 12
+        let w = 190 * (1 - t * 0.55) * (i % 2 == 0 ? 1 : 0.7)
+        let y = horizon - 22 - t * 330
+        ctx.setFillColor(rgb(0xdfe6ff, 0.75 * (1 - t)))
+        ctx.addPath(CGPath(roundedRect: CGRect(x: 512 - w / 2, y: y, width: w, height: 11), cornerWidth: 5.5, cornerHeight: 5.5, transform: nil)); ctx.fillPath()
+    }
+    ctx.restoreGState()
+
+    // Headlands closing round the water: a far pair at the horizon, a near pair in the corners.
+    let far: [(CGFloat, CGFloat)] = [(100, 430), (100, 600), (200, 585), (330, 560), (360, 520), (400, 520), (330, 470), (210, 430), (100, 430)]
+    for m in [false, true] {
+        ctx.addPath(headland([(100, 440), (100, 610), (210, 600), (330, 565), (390, 545), (430, 530), (440, 515), (400, 500), (380, 470), (300, 450), (200, 440), (100, 440)], mirror: m))
+        ctx.setFillColor(rgb(0x1b1553)); ctx.fillPath()
+    }
+    _ = far
+    for m in [false, true] {
+        ctx.addPath(headland([(100, 100), (100, 400), (200, 390), (300, 330), (340, 260), (390, 160), (410, 130), (430, 100), (100, 100)], mirror: m))
+        ctx.setFillColor(rgb(0x06051b)); ctx.fillPath()
     }
 
-    // Content under the tabs: a card with a few lines, as in an open tab.
-    ctx.setFillColor(rgb(0x171925))
-    ctx.addPath(CGPath(roundedRect: CGRect(x: 280, y: 585, width: 464, height: 120), cornerWidth: 32, cornerHeight: 32, transform: nil)); ctx.fillPath()
-    ctx.setFillColor(rgb(0xff8a6b)); ctx.fillEllipse(in: CGRect(x: 308, y: 622, width: 46, height: 46))
-    ctx.setFillColor(rgb(0xffffff, 0.85))
-    ctx.addPath(CGPath(roundedRect: CGRect(x: 376, y: 648, width: 230, height: 18), cornerWidth: 9, cornerHeight: 9, transform: nil)); ctx.fillPath()
-    ctx.setFillColor(rgb(0xffffff, 0.35))
-    ctx.addPath(CGPath(roundedRect: CGRect(x: 376, y: 616, width: 160, height: 14), cornerWidth: 7, cornerHeight: 7, transform: nil)); ctx.fillPath()
-    ctx.setFillColor(rgb(0x5ef0c8))
-    ctx.addPath(CGPath(roundedRect: CGRect(x: 640, y: 620, width: 76, height: 46), cornerWidth: 23, cornerHeight: 23, transform: nil)); ctx.fillPath()
+    // Glass sheen, then the notch.
+    ctx.drawLinearGradient(gradient([rgb(0xffffff, 0.10), rgb(0xffffff, 0)]),
+                           start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: 700), options: [])
+    let notch = notchPath(left: 392, right: 632, top: 924, bottom: 836, fillet: 0, radius: 44)
+    ctx.saveGState()
+    ctx.setShadow(offset: CGSize(width: 0, height: -4), blur: 22, color: rgb(0xb9c4ff, 0.5))
+    ctx.addPath(notch); ctx.setFillColor(rgb(0x030208)); ctx.fillPath()
+    ctx.restoreGState()
+    ctx.addPath(notch); ctx.setStrokeColor(rgb(0xffffff, 0.45)); ctx.setLineWidth(3); ctx.strokePath()
 
     ctx.restoreGState()
-    ctx.addPath(shape); ctx.setStrokeColor(rgb(0xffffff, 0.14)); ctx.setLineWidth(3); ctx.strokePath()
+    ctx.addPath(shape); ctx.setStrokeColor(rgb(0xffffff, 0.2)); ctx.setLineWidth(3); ctx.strokePath()
     ctx.restoreGState()
 }
 
 // MARK: - Menu bar template icon (monochrome; the system tints it)
 
 func drawMenuBar(_ ctx: CGContext, size S: CGFloat) {
+    // The app icon in one colour: the frame, the notch hanging from its top edge, the moon, and its path on the water.
+    // The frame spans 8...92 both ways, so the glyph is centred in the square canvas.
     let k = S / 100
     ctx.scaleBy(x: k, y: k)
-    ctx.setFillColor(CGColor(gray: 0, alpha: 1))
-    ctx.addPath(notchPath(left: 14, right: 86, top: 98, bottom: 22, fillet: 12, radius: 22)); ctx.fillPath()
-    // Three tabs cut out of the notch, the middle one larger.
-    ctx.setBlendMode(.clear)
-    for (x, r) in [(CGFloat(33), CGFloat(6.5)), (CGFloat(50), CGFloat(8.5)), (CGFloat(67), CGFloat(6.5))] {
-        ctx.fillEllipse(in: CGRect(x: x - r, y: 74 - r, width: r * 2, height: r * 2))
+    let ink = CGColor(gray: 0, alpha: 1)
+    ctx.setFillColor(ink); ctx.setStrokeColor(ink)
+    ctx.setLineWidth(6.5)
+    ctx.addPath(CGPath(roundedRect: CGRect(x: 11, y: 11, width: 78, height: 78), cornerWidth: 22, cornerHeight: 22, transform: nil))
+    ctx.strokePath()
+    ctx.addPath(notchPath(left: 36, right: 64, top: 89, bottom: 71, fillet: 0, radius: 9)); ctx.fillPath()
+    ctx.fillEllipse(in: CGRect(x: 50 - 10.5, y: 55 - 10.5, width: 21, height: 21))
+    for (y, w) in [(CGFloat(36), CGFloat(30)), (CGFloat(27), CGFloat(20)), (CGFloat(19), CGFloat(10))] {
+        ctx.addPath(CGPath(roundedRect: CGRect(x: 50 - w / 2, y: y, width: w, height: 4.5), cornerWidth: 2.25, cornerHeight: 2.25, transform: nil)); ctx.fillPath()
     }
-    ctx.addPath(CGPath(roundedRect: CGRect(x: 28, y: 36, width: 44, height: 14), cornerWidth: 7, cornerHeight: 7, transform: nil)); ctx.fillPath()
 }
 
 // MARK: - Output

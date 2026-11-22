@@ -64,6 +64,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var closeNotchTask: Task<Void, Never>?
     private var previousScreens: [NSScreen]?
     private var onboardingWindowController: NSWindowController?
+    /// While the first-run setup is on screen the notch stays out of the way: nothing is created or shown until it is done.
+    private(set) var onboardingActive = false
     private var screenLockedObserver: Any?
     private var screenUnlockedObserver: Any?
     private var isScreenLocked: Bool = false
@@ -76,6 +78,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Opens the notch on every screen it is shown on, for requests that need the user (approvals).
     func openNotchEverywhere() {
+        if onboardingActive { return }
         if Defaults[.showOnAllDisplays] {
             viewModels.values.forEach { $0.open() }
         } else {
@@ -202,7 +205,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupDragDetectors() {
         cleanupDragDetectors()
 
-        guard Defaults[.expandedDragDetection] else { return }
+        guard !onboardingActive, Defaults[.expandedDragDetection] else { return }
 
         if Defaults[.showOnAllDisplays] {
             for screen in NSScreen.screens {
@@ -447,7 +450,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        if !Defaults[.showOnAllDisplays] {
+        if coordinator.firstLaunch {
+            onboardingActive = true
+            DispatchQueue.main.async { self.showOnboardingWindow() }
+        } else if MusicManager.shared.isNowPlayingDeprecated
+            && Defaults[.mediaController] == .nowPlaying
+        {
+            onboardingActive = true
+            DispatchQueue.main.async { self.showOnboardingWindow(step: .musicPermission) }
+        }
+
+        if onboardingActive {
+            // Nothing to build yet; `finishOnboarding()` brings the notch up.
+        } else if !Defaults[.showOnAllDisplays] {
             let viewModel = self.vm
             let window = createBoringNotchWindow(
                 for: NSScreen.main ?? NSScreen.screens.first!, with: viewModel)
@@ -458,18 +473,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         setupDragDetectors()
-
-        if coordinator.firstLaunch {
-            DispatchQueue.main.async {
-                self.showOnboardingWindow()
-            }
-        } else if MusicManager.shared.isNowPlayingDeprecated
-            && Defaults[.mediaController] == .nowPlaying
-        {
-            DispatchQueue.main.async {
-                self.showOnboardingWindow(step: .musicPermission)
-            }
-        }
 
         previousScreens = NSScreen.screens
     }
@@ -510,7 +513,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Called when the first-run setup closes: only now does the notch appear.
+    func finishOnboarding() {
+        guard onboardingActive else { return }
+        onboardingActive = false
+        adjustWindowPosition(changeAlpha: true)
+        setupDragDetectors()
+    }
+
     @objc func adjustWindowPosition(changeAlpha: Bool = false) {
+        if onboardingActive { return }
         if Defaults[.showOnAllDisplays] {
             let currentScreenUUIDs = Set(NSScreen.screens.compactMap { $0.displayUUID })
 
@@ -579,6 +591,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func togglePopover(_ sender: Any?) {
+        if onboardingActive { return }
         if window?.isVisible == true {
             window?.orderOut(nil)
         } else {
@@ -614,9 +627,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 //                        NSApp.setActivationPolicy(.accessory)
                         window.close()
                         NSApp.deactivate()
+                        self.finishOnboarding()
                     },
                     onOpenSettings: {
                         window.close()
+                        self.finishOnboarding()
                         SettingsWindowController.shared.showWindow()
                     }
                 ))
