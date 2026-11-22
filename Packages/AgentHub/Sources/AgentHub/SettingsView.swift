@@ -1332,6 +1332,8 @@ enum ContentFontSize {
 }
 
 private struct AppearancePage: View {
+    /// Inside Cove the notch's height and motion belong to the host, so those two controls are left out.
+    var embedded = false
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(SettingsKey.maxVisibleSessions) private var maxVisibleSessions = SettingsDefaults.maxVisibleSessions
     @AppStorage(SettingsKey.sessionListDensity) private var sessionListDensityRaw = SettingsDefaults.sessionListDensity
@@ -1385,6 +1387,7 @@ private struct AppearancePage: View {
             }
 
             Section(l10n["panel"]) {
+                if !embedded {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text(l10n["notch_animation_speed"])
@@ -1403,6 +1406,7 @@ private struct AppearancePage: View {
                     Text(l10n["notch_animation_speed_desc"])
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
                 }
                 Picker(selection: $maxVisibleSessions) {
                     Text("3").tag(3)
@@ -1440,6 +1444,7 @@ private struct AppearancePage: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if !embedded {
                 VStack(alignment: .leading, spacing: 4) {
                     Picker(selection: notchHeightMode) {
                         Text(l10n["notch_height_match_notch"]).tag(NotchHeightMode.matchNotch)
@@ -1460,6 +1465,7 @@ private struct AppearancePage: View {
                         }
                         Slider(value: $customNotchHeight, in: 15...60, step: 1)
                     }
+                }
                 }
             }
 
@@ -3159,4 +3165,141 @@ private struct ShortcutRow: View {
         }
         .contentShape(Rectangle())
     }
+}
+
+// MARK: - Pages exposed to the host's own Settings window
+//
+// Cove hosts these inside its settings sidebar instead of opening CodeIsland's standalone window.
+
+/// Remote machines the agents run on, reached over SSH.
+public struct AgentRemoteSettingsView: View {
+    public init() {}
+    public var body: some View { RemoteHostsPage() }
+}
+
+/// ESP32 desk buddy and the Apple companion.
+public struct AgentBuddySettingsView: View {
+    public init() {}
+    public var body: some View { BuddyPage() }
+}
+
+/// Hook installation status per tool, custom tools and extra config directories.
+public struct AgentHooksSettingsView: View {
+    public init() {}
+    public var body: some View { HooksPage(appState: AgentRuntime.shared.appState) }
+}
+
+/// Webhook, push notifications, auto-approval and where hooks are read from.
+public struct AgentAutomationSettingsView: View {
+    @ObservedObject private var l10n = L10n.shared
+    @AppStorage(SettingsKey.autoApproveTools) private var autoApproveRaw: String = SettingsDefaults.autoApproveTools
+    @AppStorage(SettingsKey.autoApproveSources) private var autoApproveSources: String = SettingsDefaults.autoApproveSources
+    @AppStorage(SettingsKey.excludedHookCwdSubstrings) private var excludedHookCwdSubstrings: String = SettingsDefaults.excludedHookCwdSubstrings
+    @AppStorage(SettingsKey.claudeConfigDir) private var claudeConfigDir: String = SettingsDefaults.claudeConfigDir
+    @AppStorage(SettingsKey.webhookEnabled) private var webhookEnabled: Bool = SettingsDefaults.webhookEnabled
+    @AppStorage(SettingsKey.webhookURL) private var webhookURL: String = SettingsDefaults.webhookURL
+    @AppStorage(SettingsKey.webhookEventFilter) private var webhookEventFilter: String = SettingsDefaults.webhookEventFilter
+    @AppStorage(SettingsKey.sessionTimeout) private var sessionTimeout = SettingsDefaults.sessionTimeout
+    @AppStorage(SettingsKey.maxToolHistory) private var maxToolHistory = SettingsDefaults.maxToolHistory
+
+    public init() {}
+
+    private func autoApproveBinding(for name: String) -> Binding<Bool> {
+        Binding(
+            get: { autoApproveRaw.split(separator: ",").contains(Substring(name)) },
+            set: { isOn in
+                var set = Set(autoApproveRaw.split(separator: ",").map(String.init))
+                if isOn { set.insert(name) } else { set.remove(name) }
+                autoApproveRaw = set.sorted().joined(separator: ",")
+            }
+        )
+    }
+
+    public var body: some View {
+        Form {
+            Section(l10n["webhook_title"]) {
+                Text(l10n["webhook_desc"]).font(.caption).foregroundStyle(.secondary)
+                Toggle(l10n["webhook_enable"], isOn: $webhookEnabled)
+                if webhookEnabled {
+                    TextField(l10n["webhook_url_placeholder"], text: $webhookURL)
+                        .textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced)).autocorrectionDisabled(true)
+                    TextField(l10n["webhook_filter_placeholder"], text: $webhookEventFilter)
+                        .textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced)).autocorrectionDisabled(true)
+                    Text(l10n["webhook_filter_hint"]).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
+            PushNotificationsSection()
+
+            Section(l10n["auto_approve_tools"]) {
+                Text(l10n["auto_approve_tools_desc"]).font(.caption).foregroundStyle(.secondary)
+                ForEach(SettingsManager.allAutoApproveTools, id: \.name) { tool in
+                    Toggle(isOn: autoApproveBinding(for: tool.name)) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(tool.name).font(.system(size: 12, design: .monospaced))
+                            Text(l10n["auto_approve_\(tool.name)"]).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(l10n["auto_approve_sources"]).font(.system(size: 12, weight: .medium))
+                    Text(l10n["auto_approve_sources_desc"]).font(.caption).foregroundStyle(.secondary)
+                    TextField(l10n["auto_approve_sources_placeholder"], text: $autoApproveSources)
+                        .textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced))
+                }
+            }
+
+            Section(l10n["claude_config_dir_title"]) {
+                Text(l10n["claude_config_dir_desc"]).font(.caption).foregroundStyle(.secondary)
+                TextField(l10n["claude_config_dir_placeholder"], text: $claudeConfigDir)
+                    .textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced))
+                Text(String(format: l10n["claude_config_dir_resolved"], ClaudeConfigPaths.displayPath(ClaudeConfigPaths.configDir())))
+                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+            }
+
+            Section(l10n["excluded_hook_cwd_title"]) {
+                Text(l10n["excluded_hook_cwd_desc"]).font(.caption).foregroundStyle(.secondary)
+                TextField(l10n["excluded_hook_cwd_placeholder"], text: $excludedHookCwdSubstrings)
+                    .textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced))
+            }
+
+            Section(l10n["sessions"]) {
+                Picker(selection: $sessionTimeout) {
+                    Text(l10n["no_cleanup"]).tag(0)
+                    Text(l10n["10_minutes"]).tag(10)
+                    Text(l10n["30_minutes"]).tag(30)
+                    Text(l10n["1_hour"]).tag(60)
+                    Text(l10n["2_hours"]).tag(120)
+                } label: {
+                    Text(l10n["session_cleanup"])
+                    Text(l10n["session_cleanup_desc"])
+                }
+                Picker(selection: $maxToolHistory) {
+                    Text("10").tag(10); Text("20").tag(20); Text("50").tag(50); Text("100").tag(100)
+                } label: {
+                    Text(l10n["tool_history_limit"])
+                    Text(l10n["tool_history_limit_desc"])
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+/// Panel contents, session list and quota display.
+public struct AgentAppearanceSettingsView: View {
+    public init() {}
+    public var body: some View { AppearancePage(embedded: true) }
+}
+
+/// One mascot per tool, and how fast they move.
+public struct AgentMascotSettingsView: View {
+    public init() {}
+    public var body: some View { MascotsPage() }
+}
+
+/// Sounds per event, volume, quiet hours.
+public struct AgentSoundSettingsView: View {
+    public init() {}
+    public var body: some View { SoundPage() }
 }

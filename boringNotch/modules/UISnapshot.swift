@@ -35,6 +35,11 @@ enum UISnapshot {
             } else {
                 await sleep(4)
             }
+            if ProcessInfo.processInfo.environment["COVE_REPORT_SETTINGS"] == "1",
+               let dir = ProcessInfo.processInfo.environment["COVE_WINDOW_REPORT_PNG_DIR"],
+               let content = SettingsWindowController.shared.window?.contentView {
+                snapshot(content, to: "\(dir)/settings.png")
+            }
             var lines: [String] = []
             for screen in NSScreen.screens { lines.append("screen frame=\(screen.frame) visible=\(screen.visibleFrame)") }
             for window in NSApp.windows {

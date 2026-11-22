@@ -110,6 +110,22 @@ struct ManagerTests {
         return condition()
     }
 
+    @Test func installCopiesSwitchedOffAndRejectsBadOrDuplicate() throws {
+        let plugins = try makeRoot(), incoming = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: plugins); try? FileManager.default.removeItem(at: incoming) }
+        try writePlugin(incoming, folder: "fresh", id: "fresh", script: "#!/bin/sh\n")
+        try FileManager.default.createDirectory(at: incoming.appendingPathComponent("nomanifest"), withIntermediateDirectories: true)
+        let manager = PluginManager(directory: plugins, registry: ModuleRegistry(), defaults: UserDefaults(suiteName: "pk-\(UUID().uuidString)")!)
+        manager.reload()
+
+        let manifest = try manager.install(from: incoming.appendingPathComponent("fresh"))
+        #expect(manifest.id == "fresh")
+        #expect(manager.discovered.contains { $0.manifest?.id == "fresh" })
+        #expect(!manager.isEnabled("fresh"))                    // installing is not consent to run it
+        #expect(throws: PluginManager.InstallError.self) { try manager.install(from: incoming.appendingPathComponent("fresh")) }
+        #expect(throws: PluginManager.InstallError.self) { try manager.install(from: incoming.appendingPathComponent("nomanifest")) }
+    }
+
     @Test func discoversValidAndReportsBroken() throws {
         let root = try makeRoot(); defer { try? FileManager.default.removeItem(at: root) }
         try writePlugin(root, folder: "good", id: "good", script: "#!/bin/sh\n")

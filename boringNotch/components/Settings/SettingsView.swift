@@ -15,7 +15,7 @@ import SwiftUI
 import SwiftUIIntrospect
 
 struct SettingsView: View {
-    @State private var selectedTab = "General"
+    @State private var selectedTab = ProcessInfo.processInfo.environment["COVE_SETTINGS_TAB"] ?? "General"
     @State private var accentColorUpdateTrigger = UUID()
 
     let updaterController: SPUStandardUpdaterController?
@@ -36,7 +36,16 @@ struct SettingsView: View {
             ("HUD", "HUDs", "dial.medium.fill"),
             ("Battery", "Battery", "battery.100.bolt"),
             ("Shelf", "Shelf", "books.vertical"),
-            ("Agents", "Agents", "sparkles"),
+        ]),
+        ("Agents", [
+            ("Agents", "Connections", "sparkles"),
+            ("AgentDisplay", "Agent Display", "rectangle.3.group"),
+            ("AgentMascots", "Mascots", "face.smiling"),
+            ("AgentSound", "Sounds", "speaker.wave.2"),
+            ("AgentAutomation", "Automation", "bolt.badge.automatic"),
+            ("AgentRemote", "Remote Hosts", "network"),
+            ("AgentBuddy", "Buddy", "dot.radiowaves.left.and.right"),
+            ("AgentHooks", "Hooks", "link"),
         ]),
         ("More", [
             ("Shortcuts", "Shortcuts", "keyboard"),
@@ -85,6 +94,8 @@ struct SettingsView: View {
                     ModulesSettings()
                 case "Agents":
                     AgentsSettings()
+                case "AgentDisplay", "AgentMascots", "AgentSound", "AgentAutomation", "AgentRemote", "AgentBuddy", "AgentHooks":
+                    AgentSettingsPage(id: selectedTab)
                 case "Advanced":
                     Advanced()
                 case "About":

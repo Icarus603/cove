@@ -40,12 +40,14 @@ struct AgentsOnboardingView: View {
                             .foregroundStyle(.secondary)
                     }
                     ForEach(tools) { tool in
-                        HStack(spacing: 8) {
-                            Image(systemName: tool.installed ? "checkmark.circle.fill" : "circle.dotted")
-                                .foregroundStyle(tool.installed ? Color.green : Color.secondary)
+                        Toggle(isOn: Binding(
+                            get: { tool.installed },
+                            set: { on in Task { await runtime.setTool(tool.id, enabled: on); tools = runtime.tools().filter(\.detected) } }
+                        )) {
                             Text(tool.name)
-                            Spacer()
                         }
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

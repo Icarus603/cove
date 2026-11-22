@@ -86,6 +86,42 @@ public final class PluginManager: ObservableObject {
         }
     }
 
+    public enum InstallError: LocalizedError {
+        case noManifest, invalidManifest(String), alreadyInstalled(String)
+        public var errorDescription: String? {
+            switch self {
+            case .noManifest: return String(localized: "That folder has no manifest.json.", bundle: .module)
+            case .invalidManifest(let why): return String(localized: "The manifest is not valid: \(why)", bundle: .module)
+            case .alreadyInstalled(let id): return String(localized: "A plugin with the id \(id) is already installed.", bundle: .module)
+            }
+        }
+    }
+
+    /// Copies a plugin folder into the plugins directory. It is installed switched off.
+    @discardableResult
+    public func install(from source: URL) throws -> PluginManifest {
+        let manifestURL = source.appendingPathComponent("manifest.json")
+        guard let data = try? Data(contentsOf: manifestURL) else { throw InstallError.noManifest }
+        let manifest: PluginManifest
+        do { manifest = try JSONDecoder().decode(PluginManifest.self, from: data) }
+        catch { throw InstallError.invalidManifest(error.localizedDescription) }
+        if discovered.contains(where: { $0.manifest?.id == manifest.id }) { throw InstallError.alreadyInstalled(manifest.id) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var target = directory.appendingPathComponent(source.lastPathComponent)
+        if FileManager.default.fileExists(atPath: target.path) { target = directory.appendingPathComponent(manifest.id) }
+        try FileManager.default.copyItem(at: source, to: target)
+        reload()
+        return manifest
+    }
+
+    /// Stops a plugin and moves its folder to the Trash.
+    public func remove(id: String) {
+        guard let plugin = discovered.first(where: { $0.id == id }) else { return }
+        setEnabled(false, id: id)
+        try? FileManager.default.trashItem(at: plugin.folder, resultingItemURL: nil)
+        reload()
+    }
+
     public func shutdown() {
         for id in Array(running.keys) { stop(id) }
     }
@@ -107,7 +143,8 @@ public final class PluginManager: ObservableObject {
 /// A list of the plugins found, each with an on/off switch.
 public struct PluginSettingsView: View {
     @ObservedObject var manager: PluginManager
-    @State private var reloadTick = 0
+    @State private var pendingRemoval: DiscoveredPlugin?
+    @State private var message: String?
 
     public init(manager: PluginManager) { self.manager = manager }
 
@@ -131,15 +168,38 @@ public struct PluginSettingsView: View {
                         Toggle("", isOn: Binding(get: { manager.isEnabled(id) }, set: { manager.setEnabled($0, id: id) }))
                             .labelsHidden()
                     }
+                    Button(role: .destructive) { pendingRemoval = plugin } label: { Image(systemName: "trash") }
+                        .buttonStyle(.borderless)
+                        .help(String(localized: "Move to Trash", bundle: .module))
                 }
             }
+            if let message { Text(message).font(.caption).foregroundStyle(.red) }
             HStack {
-                Button(String(localized: "Open plugins folder", bundle: .module)) {
-                    NSWorkspace.shared.open(manager.directory)
-                }
+                Button(String(localized: "Add plugin…", bundle: .module)) { choosePlugin() }
+                Button(String(localized: "Open plugins folder", bundle: .module)) { NSWorkspace.shared.open(manager.directory) }
                 Button(String(localized: "Reload", bundle: .module)) { manager.reload() }
+            }
+        }
+        .confirmationDialog(
+            String(localized: "Move this plugin to the Trash?", bundle: .module),
+            isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "Move to Trash", bundle: .module), role: .destructive) {
+                if let plugin = pendingRemoval { manager.remove(id: plugin.id) }
+                pendingRemoval = nil
             }
         }
         .onAppear { manager.reload() }
     }
+
+    private func choosePlugin() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
+        panel.message = String(localized: "Choose a plugin folder (it contains manifest.json).", bundle: .module)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try manager.install(from: url); message = nil }
+        catch { message = error.localizedDescription }
+    }
 }
+

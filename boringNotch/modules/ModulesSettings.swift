@@ -52,3 +52,20 @@ struct AgentsSettings: View {
             .navigationTitle("Agents")
     }
 }
+
+/// The agents' settings pages beyond the main one, each reached from its own sidebar row.
+struct AgentSettingsPage: View {
+    let id: String
+
+    var body: some View {
+        switch id {
+        case "AgentDisplay": AgentAppearanceSettingsView().navigationTitle("Agent Display")
+        case "AgentMascots": AgentMascotSettingsView().navigationTitle("Mascots")
+        case "AgentSound": AgentSoundSettingsView().navigationTitle("Sounds")
+        case "AgentAutomation": AgentAutomationSettingsView().navigationTitle("Automation")
+        case "AgentRemote": AgentRemoteSettingsView().navigationTitle("Remote Hosts")
+        case "AgentBuddy": AgentBuddySettingsView().navigationTitle("Buddy")
+        default: AgentHooksSettingsView().navigationTitle("Hooks")
+        }
+    }
+}

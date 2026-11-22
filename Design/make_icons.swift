@@ -184,7 +184,7 @@ func drawMenuBar(_ ctx: CGContext, size S: CGFloat) {
     ctx.strokePath()
     ctx.addPath(notchPath(left: 36, right: 64, top: 89, bottom: 71, fillet: 0, radius: 9)); ctx.fillPath()
     ctx.fillEllipse(in: CGRect(x: 50 - 10.5, y: 55 - 10.5, width: 21, height: 21))
-    for (y, w) in [(CGFloat(36), CGFloat(30)), (CGFloat(27), CGFloat(20)), (CGFloat(19), CGFloat(10))] {
+    for (y, w) in [(CGFloat(34), CGFloat(32)), (CGFloat(24), CGFloat(18))] {
         ctx.addPath(CGPath(roundedRect: CGRect(x: 50 - w / 2, y: y, width: w, height: 4.5), cornerWidth: 2.25, cornerHeight: 2.25, transform: nil)); ctx.fillPath()
     }
 }
