@@ -1024,8 +1024,8 @@ enum UISnapshot {
         await render(ImportReportBar(report: photos.report) {}.padding(14).frame(width: 600), size: CGSize(width: 600, height: 70), name: "report-2-window-bar", dir: dir)
         await render(ImportReportView(report: player.report) {}, size: CGSize(width: 620, height: 460), name: "report-3-player-window", dir: dir)
         await render(ImportReportView(report: photos.report) {}, size: CGSize(width: 620, height: 560), name: "report-4-photo-window", dir: dir)
-        func windowShot<V: View>(_ root: V, name: String) async {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 560), styleMask: [.titled, .closable, .resizable],
+        func windowShot<V: View>(_ root: V, name: String, width: CGFloat = 1000) async {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 560), styleMask: [.titled, .closable, .resizable],
                                   backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
             window.contentViewController = NSHostingController(rootView: root)
@@ -1075,7 +1075,8 @@ enum UISnapshot {
         // capture of the (off-screen) window shows them.
         PlayerManagerView.debugSelectAll = true; PhotoWindowView.debugSelectAll = true
         await windowShot(PlayerManagerView(), name: "report-5-manager")
-        await windowShot(PhotoWindowView(), name: "report-6-photos")
+        PhotoWindowView.debugSelectAll = true
+        await windowShot(PhotoWindowView(), name: "report-6-photos", width: 840)
         if let first = await PhotoLibrary.shared.ids(scope: .all, sort: .name).first {
             PhotoWindowView.debugSelectAll = false
             PhotoWindowController.shared.pending = (.all, first)

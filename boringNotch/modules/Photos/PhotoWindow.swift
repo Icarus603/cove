@@ -116,9 +116,11 @@ struct PhotoWindowView: View {
     @StateObject private var model = PhotoBrowserModel()
     @ObservedObject private var library = PhotoLibrary.shared
     @State private var confirmRemove = false
+    /// The album list is out of the way until asked for (the button in the title bar); the choice is remembered.
+    @AppStorage("photos.sidebarVisible") private var sidebarVisible = false
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: Binding(get: { sidebarVisible ? .all : .detailOnly }, set: { sidebarVisible = ($0 != .detailOnly) })) {
             PhotoSidebar(model: model)
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)
         } detail: {
@@ -176,24 +178,30 @@ struct PhotoWindowView: View {
 
     // MARK: Toolbar
 
+    /// The bar that is always there, and under it, only while photos are selected, the bar for what can be done with them. They
+    /// are two rows so neither can outgrow the window (one row with everything on it did, and broke the layout).
     private var toolbar: some View {
+        VStack(spacing: 0) {
+            mainBar
+            if !model.selection.isEmpty {
+                Divider()
+                selectionBar
+            }
+        }
+    }
+
+    private var mainBar: some View {
         HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(model.title).font(.system(size: 15, weight: .bold)).lineLimit(1)
-                Text(model.selection.isEmpty ? String(localized: "\(model.ids.count) photos") : String(localized: "\(model.selection.count) selected"))
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(String(localized: "\(model.ids.count) photos")).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
+            .layoutPriority(0)
             Spacer(minLength: 8)
-            if !model.ids.isEmpty {
-                ToolbarPillButton(title: model.selection.count == model.ids.count ? "Deselect All" : "Select All") {
-                    if model.selection.count == model.ids.count { model.clearSelection() } else { model.selectAll() }
-                }
-            }
-            if !model.selection.isEmpty { selectionActions }
-            ToolbarSearchField(text: $model.search, width: 160)
+            ToolbarSearchField(text: $model.search, width: 150)
             HStack(spacing: 5) {
                 Image(systemName: "square.grid.3x3").font(.system(size: 10)).foregroundStyle(.secondary)
-                Slider(value: $model.thumbSize, in: 80...320).frame(width: 84).controlSize(.mini)
+                Slider(value: $model.thumbSize, in: 80...320).frame(width: 80).controlSize(.mini)
                 Image(systemName: "square.grid.2x2").font(.system(size: 12)).foregroundStyle(.secondary)
             }
             .frame(height: ToolbarMetrics.height)
@@ -209,9 +217,25 @@ struct PhotoWindowView: View {
                 .disabled(model.ids.isEmpty)
             ToolbarPillButton(title: "Add", symbol: "plus", prominent: true) { PhotoActions.chooseFilesToAdd() }
                 .help(Text("Add photos or folders"))
+                .fixedSize()
         }
         .frame(height: ToolbarMetrics.height + 6)
         .padding(.horizontal, 14).padding(.vertical, 9)
+    }
+
+    private var selectionBar: some View {
+        HStack(alignment: .center, spacing: 8) {
+            ToolbarPillButton(title: model.selection.count == model.ids.count ? "Deselect All" : "Select All") {
+                if model.selection.count == model.ids.count { model.clearSelection() } else { model.selectAll() }
+            }
+            .fixedSize()
+            Text(String(localized: "\(model.selection.count) selected")).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+            Spacer(minLength: 8)
+            selectionActions
+        }
+        .frame(height: ToolbarMetrics.height + 4)
+        .padding(.horizontal, 14).padding(.vertical, 6)
+        .background(Color.secondary.opacity(0.06))
     }
 
     private var selectionActions: some View {
@@ -227,9 +251,9 @@ struct PhotoWindowView: View {
             } label: { ToolbarPillLabel(title: "Add to album", symbol: "rectangle.stack.badge.plus", showsChevron: true) }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
             if case .album = model.scope {
-                ToolbarPillButton(title: "Remove from album", symbol: "minus.circle") { handleRemove() }
+                ToolbarPillButton(title: "Remove from album", symbol: "minus.circle") { handleRemove() }.fixedSize()
             } else {
-                ToolbarIconButton(symbol: "trash", help: "Remove", role: .destructive) { handleRemove() }
+                ToolbarPillButton(title: "Remove from Library", symbol: "trash") { handleRemove() }.fixedSize()
             }
         }
     }

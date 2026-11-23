@@ -34,6 +34,7 @@ struct PhotoSidebar: View {
                 if library.albums.isEmpty && !creating {
                     Text("No albums yet. Select photos and choose Add to album, or pick an album when adding.")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .lineLimit(nil).multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.vertical, 4)
                 }
