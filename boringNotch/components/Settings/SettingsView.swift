@@ -56,18 +56,33 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selectedTab) {
+            // The system draws a sidebar selection in the asset's fixed accent and ignores .tint, so the rows are
+            // plain buttons and the selection is drawn here in the user's accent.
+            List {
                 ForEach(Self.sidebarGroups.indices, id: \.self) { index in
                     Section(Self.sidebarGroups[index].title) {
                         ForEach(Self.sidebarGroups[index].items, id: \.id) { item in
-                            NavigationLink(value: item.id) {
+                            let selected = selectedTab == item.id
+                            Button {
+                                selectedTab = item.id
+                            } label: {
                                 Label {
                                     Text(item.title)
+                                        .foregroundStyle(selected ? Color.white : Color.primary)
                                 } icon: {
                                     Image(systemName: item.icon)
-                                        .foregroundStyle(selectedTab == item.id ? Color.white : Color.effectiveAccent)
+                                        .foregroundStyle(selected ? Color.white : Color.effectiveAccent)
                                 }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
+                            .listRowBackground(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(selected ? Color.effectiveAccent : Color.clear)
+                                    .padding(.horizontal, 6)
+                            )
+                            .accessibilityAddTraits(selected ? .isSelected : [])
                         }
                     }
                 }
