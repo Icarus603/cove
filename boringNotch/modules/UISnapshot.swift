@@ -231,6 +231,12 @@ enum UISnapshot {
                 NSApp.terminate(nil)
                 return
             }
+            if let fixtures = env["COVE_SHOT_MINIBAR"] {
+                await miniBarShots(fixtures: URL(fileURLWithPath: fixtures), dir: dir)
+                try? "done".write(toFile: dir + "/DONE", atomically: true, encoding: .utf8)
+                NSApp.terminate(nil)
+                return
+            }
             if env["COVE_SHOT_EDIT_UI"] != nil {
                 await editorShots(dir: dir)
                 try? "done".write(toFile: dir + "/DONE", atomically: true, encoding: .utf8)
@@ -1128,6 +1134,42 @@ enum UISnapshot {
         await sleep(0.8)
         log.append("after a screen change while off: pet visible \(DesktopPet.debugPetWindowVisible), bubble visible \(DesktopPet.debugBubbleWindowVisible)")
         try? log.joined(separator: "\n").write(toFile: dir + "/pet.txt", atomically: true, encoding: .utf8)
+    }
+
+    /// The Player's mini bar beside a closed notch, for a video and for a song, drawn in a window off screen.
+    static func miniBarShots(fixtures: URL, dir: String) async {
+        let library = PlayerLibrary.shared, engine = PlayerEngine.shared
+        engine.volume = 0
+        await library.importURLs([fixtures])
+        func shot(_ name: String, kind: MediaKind) async {
+            guard let item = library.items.first(where: { $0.kind == kind }) else { return }
+            engine.play(ids: [item.id], start: item.id, resume: false)
+            await sleep(1.5)
+            let width: CGFloat = 190 + 2 * (32 - 12) + 40
+            let bar = PlayerMiniBar(notchWidth: 190, notchHeight: 32)
+                .frame(width: width, height: 32)
+                .background(UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14, style: .continuous).fill(Color.black))
+                .padding(10)
+                .background(Color(white: 0.55))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width + 20, height: 52), styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            let host = NSHostingController(rootView: bar.ignoresSafeArea())
+            host.sizingOptions = []
+            window.contentViewController = host
+            window.setContentSize(NSSize(width: width + 20, height: 52))
+            window.setFrameOrigin(NSPoint(x: -20_000, y: -20_000))
+            window.orderFront(nil)
+            await sleep(1)
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            p.arguments = ["-x", "-o", "-l\(window.windowNumber)", "\(dir)/\(name).png"]
+            try? p.run(); p.waitUntilExit()
+            window.close()
+            engine.stop()
+        }
+        await shot("minibar-video", kind: .video)
+        await shot("minibar-audio", kind: .audio)
     }
 
     static func importReportShots(playerFixtures: URL, photoFixtures: URL, dir: String) async {

@@ -92,7 +92,6 @@ struct PlayerMiniBar: View {
     @ObservedObject private var engine = PlayerEngine.shared
 
     private var side: CGFloat { max(0, notchHeight - 12) }
-
     var body: some View {
         HStack {
             cover
@@ -119,9 +118,20 @@ struct PlayerMiniBar: View {
         // Music shows its cover. A video shows the video itself, shrunk to the corner and still playing (the whole frame, not a
         // cropped square: a still cut down to 30 pt reads as a random patch of colour, but moving picture is recognisable).
         if let item = engine.current, item.kind == .video {
-            VideoSurface(player: engine.player, gravity: .resizeAspect)
-                .allowsHitTesting(false)
-                .clipShape(RoundedRectangle(cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed))
+            // A 16:9 picture in the square slot fills its width and has black bars above and below, which melt into the notch
+            // and leave a small rectangle against the screen's edge. A little smaller, and pushed toward the notch, it has
+            // room on its outer side. The slot itself (and so the layout of the notch) is the same as for a song.
+            // The same look as a YouTube thumbnail beside the notch (SquareArtwork): the picture whole, in the middle of a square,
+            // over a blurred, enlarged copy of itself, and the same inset and shift.
+            ZStack {
+                VideoSurface(player: engine.player, gravity: .resizeAspectFill).blur(radius: 4).opacity(0.85)
+                VideoSurface(player: engine.player, gravity: .resizeAspect)
+            }
+            .allowsHitTesting(false)
+            .clipShape(RoundedRectangle(cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed))
+            .frame(width: side - SquareArtwork.wideInset, height: side - SquareArtwork.wideInset)
+            .frame(width: side, height: side, alignment: .trailing)
+            .offset(x: SquareArtwork.wideShift)
         } else if let item = engine.current, item.kind == .audio, let image = library.artwork(for: item) {
             Image(nsImage: image).resizable().scaledToFill().clipShape(RoundedRectangle(cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed))
         } else {
