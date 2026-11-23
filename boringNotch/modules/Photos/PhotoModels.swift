@@ -64,10 +64,14 @@ struct PhotoImportSummary: Equatable {
     var alreadyInLibrary = 0
     /// Every file that was looked at and left out, with why.
     var skipped: [SkippedFile] = []
+    /// Every picture file of the selection, as stored paths, whether it was new or already in the library.
+    var candidatePaths: [String] = []
+    /// Where they were filed as they were added ("“Trip”", "3 albums"), if an album was chosen.
+    var albumNote: String?
 
     var unsupported: [String] { skipped.filter(\.isFormatProblem).map(\.name) }
     var failed: [String] { skipped.filter { !$0.isFormatProblem }.map(\.name) }
 
-    var isEmpty: Bool { added == 0 && alreadyInLibrary == 0 && skipped.isEmpty }
-    var report: ImportReport { ImportReport(domain: .photo, added: added, alreadyInLibrary: alreadyInLibrary, skipped: skipped) }
+    var isEmpty: Bool { added == 0 && alreadyInLibrary == 0 && skipped.isEmpty && candidatePaths.isEmpty }
+    var report: ImportReport { ImportReport(domain: .photo, added: added, alreadyInLibrary: alreadyInLibrary, skipped: skipped, playlistName: albumNote) }
 }

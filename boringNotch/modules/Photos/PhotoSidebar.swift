@@ -31,6 +31,12 @@ struct PhotoSidebar: View {
                 ForEach(library.albums) { album in
                     albumRow(album)
                 }
+                if library.albums.isEmpty && !creating {
+                    Text("No albums yet. Select photos and choose Add to album, or pick an album when adding.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.vertical, 4)
+                }
                 if creating {
                     HStack {
                         Image(systemName: "rectangle.stack").foregroundStyle(Color.effectiveAccent).frame(width: 18)

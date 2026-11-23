@@ -120,6 +120,7 @@ final class PhotoLibrary: ObservableObject {
             return (files.map { $0.standardizedFileURL.resolvingSymlinksInPath().path }, s.skipped)
         }.value
         summary.skipped = skipped
+        summary.candidatePaths = candidates
         let known = (try? await store.knownPaths(among: candidates)) ?? []
         var seen = Set<String>()
         var fresh: [String] = []
@@ -278,6 +279,32 @@ final class PhotoLibrary: ObservableObject {
     }
 
     // MARK: Albums
+
+    /// Where photos go as they are added.
+    enum Destination { case none, existing(Int64), new(String) }
+
+    /// Puts the photos of an import into an album, an existing one or a new one. Albums are made by the user, never from the
+    /// folder layout (folders are nested; an album per folder would be a heap). Returns how the result should be described.
+    func file(_ summary: PhotoImportSummary, into destination: Destination) async -> String? {
+        guard let store, !summary.candidatePaths.isEmpty else { return nil }
+        let idByPath = (try? await store.idsByPath(summary.candidatePaths)) ?? [:]
+        func ids(_ paths: [String]) -> [Int64] { paths.compactMap { idByPath[$0] } }
+        switch destination {
+        case .none:
+            return nil
+        case .existing(let id):
+            guard let album = albums.first(where: { $0.id == id }) else { return nil }
+            await add(ids(summary.candidatePaths), toAlbum: id)
+            return "“\(album.name)”"
+        case .new(let name):
+            let album = await createAlbum(named: name.isEmpty ? Self.folderName(summary.candidatePaths.first) : name, with: ids(summary.candidatePaths))
+            return album.map { "“\($0.name)”" }
+        }
+    }
+
+    private static func folderName(_ path: String?) -> String {
+        path.map { (($0 as NSString).deletingLastPathComponent as NSString).lastPathComponent } ?? ""
+    }
 
     @discardableResult
     func createAlbum(named name: String, with ids: [Int64] = []) async -> Album? {

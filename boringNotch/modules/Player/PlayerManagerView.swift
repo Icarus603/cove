@@ -66,6 +66,9 @@ struct PlayerManagerView: View {
     @State private var creating = false
     @State private var newName = ""
 
+    /// Set by the screenshot harness only.
+    nonisolated(unsafe) static var debugSelectAll = false
+
     var body: some View {
         NavigationSplitView {
             sidebar.navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)
@@ -74,7 +77,7 @@ struct PlayerManagerView: View {
         }
         .frame(minWidth: 860, minHeight: 500)
         .tint(Color.effectiveAccent)
-        .onAppear { applyPending() }
+        .onAppear { applyPending(); if PlayerManagerView.debugSelectAll { Task { try? await Task.sleep(nanoseconds: 800_000_000); model.selectAll() } } }
         .onReceive(NotificationCenter.default.publisher(for: PlayerManagerWindowController.requestNotification)) { _ in applyPending() }
         .confirmationDialog(removeSelectionTitle, isPresented: $confirmRemoveSelection, titleVisibility: .visible) {
             Button(model.isPlaylist ? "Remove from Playlist" : "Remove from Library", role: .destructive) { model.removeSelected() }
@@ -198,31 +201,24 @@ struct PlayerManagerView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 0) {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(model.title).font(.system(size: 17, weight: .bold)).lineLimit(1)
-                Text("\(model.rows.count) items").font(.caption).foregroundStyle(.secondary)
+                Text("\(model.rows.count) items").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer()
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search", text: $model.search).textFieldStyle(.plain).frame(width: 190)
-                if !model.search.isEmpty {
-                    Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 9).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.secondary.opacity(0.15)))
-            Button { PlayerUI.shared.chooseFilesToAdd() } label: { Label("Add", systemImage: "plus") }
+            ToolbarSearchField(text: $model.search, width: 210)
+            ToolbarPillButton(title: "Add", symbol: "plus", prominent: true) { PlayerUI.shared.chooseFilesToAdd() }
                 .help(Text("Add files or folders"))
         }
-        .padding(.horizontal, 16).padding(.vertical, 11)
+        .frame(height: ToolbarMetrics.height + 8)
+        .padding(.horizontal, 16).padding(.vertical, 10)
     }
 
     /// Always on screen, so what can be done with a selection is never a secret.
     private var actionBar: some View {
-        HStack(spacing: 12) {
-            Button(model.allSelected ? "Deselect All" : "Select All") { model.allSelected ? model.clearSelection() : model.selectAll() }
+        HStack(alignment: .center, spacing: 8) {
+            ToolbarPillButton(title: model.allSelected ? "Deselect All" : "Select All") { model.allSelected ? model.clearSelection() : model.selectAll() }
                 .disabled(model.rows.isEmpty)
             Text(model.selection.isEmpty ? String(localized: "Nothing selected") : String(localized: "\(model.selection.count) of \(model.rows.count) selected"))
                 .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -233,23 +229,26 @@ struct PlayerManagerView: View {
                 ForEach(library.playlists) { playlist in
                     if model.playlistID != playlist.id { Button(playlist.name) { model.addSelected(toPlaylist: playlist.id) } }
                 }
-            } label: { Label("Add to Playlist", systemImage: "text.badge.plus") }
-                .menuStyle(.borderlessButton).fixedSize().disabled(model.selection.isEmpty)
-            if model.isPlaylist {
-                Button { model.moveSelected(by: -1) } label: { Image(systemName: "arrow.up") }.help(Text("Move up")).disabled(model.selection.isEmpty)
-                Button { model.moveSelected(by: 1) } label: { Image(systemName: "arrow.down") }.help(Text("Move down")).disabled(model.selection.isEmpty)
+            } label: { ToolbarPillLabel(title: "Add to Playlist", symbol: "text.badge.plus", showsChevron: true) }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().disabled(model.selection.isEmpty)
+            if case .playlist(let playlistID) = model.scope {
+                Menu {
+                    ForEach(PlaylistArrange.allCases) { how in Button(how.title) { library.arrange(playlistID, how) } }
+                } label: { ToolbarPillLabel(title: "Arrange", symbol: "arrow.up.arrow.down", showsChevron: true) }
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().help(Text("Put this playlist in order"))
+                ToolbarIconButton(symbol: "arrow.up", help: "Move up") { model.moveSelected(by: -1) }.disabled(model.selection.isEmpty)
+                ToolbarIconButton(symbol: "arrow.down", help: "Move down") { model.moveSelected(by: 1) }.disabled(model.selection.isEmpty)
             }
-            Button { reveal(Array(model.selection)) } label: { Label("Show in Finder", systemImage: "folder") }.disabled(model.selection.isEmpty)
-            Button(role: .destructive) { requestRemoveSelection() } label: {
-                Label(model.isPlaylist ? "Remove from Playlist" : "Remove from Library", systemImage: "trash")
-            }
-            .disabled(model.selection.isEmpty)
+            ToolbarPillButton(title: "Show in Finder", symbol: "folder") { reveal(Array(model.selection)) }.disabled(model.selection.isEmpty)
+            ToolbarPillButton(title: model.isPlaylist ? "Remove from Playlist" : "Remove from Library", symbol: "trash") { requestRemoveSelection() }
+                .disabled(model.selection.isEmpty)
             if model.isPlaylist {
-                Button(role: .destructive) { confirmRemoveFromLibrary = true } label: { Label("Remove from Library", systemImage: "trash.slash") }
+                ToolbarPillButton(title: "Remove from Library", symbol: "trash.slash") { confirmRemoveFromLibrary = true }
                     .disabled(model.selection.isEmpty)
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, 7)
+        .frame(height: ToolbarMetrics.height + 4)
+        .padding(.horizontal, 16).padding(.vertical, 6)
         .background(Color.secondary.opacity(0.06))
     }
 

@@ -39,14 +39,16 @@ final class PhotoWindowController: NSObject, NSWindowDelegate {
         pending = (scope, photo)
         if window == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 760),
-                                  styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                                  styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                                   backing: .buffered, defer: false)
             window.title = String(localized: "Photos")
             window.isReleasedWhenClosed = false
             window.minSize = NSSize(width: 820, height: 520)
             window.collectionBehavior = [.managed, .participatesInCycle, .fullScreenPrimary]
             window.identifier = NSUserInterfaceItemIdentifier("CovePhotoWindow")
-            window.titlebarAppearsTransparent = false
+            // The title bar is see-through so an open photo can run right up to the top edge, as a video does.
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
             let hosting = NSHostingController(rootView: PhotoWindowView())
             hosting.sizingOptions = []
             window.contentViewController = hosting
@@ -86,6 +88,9 @@ enum PhotoActions {
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowedContentTypes = PhotoFormats.contentTypes
+        let chooser = AddToAlbumChooser(albums: PhotoLibrary.shared.albums)
+        panel.accessoryView = chooser.view
+        panel.isAccessoryViewDisclosed = true
         SharingStateManager.shared.beginInteraction()
         NSApp.activate(ignoringOtherApps: true)
         panel.presentAboveNotch()
@@ -93,12 +98,21 @@ enum PhotoActions {
             SharingStateManager.shared.endInteraction()
             guard response == .OK else { return }
             let urls = panel.urls
-            Task { @MainActor in await PhotoLibrary.shared.importURLs(urls) }
+            let destination = chooser.destination
+            Task { @MainActor in
+                var summary = await PhotoLibrary.shared.importURLs(urls)
+                if let note = await PhotoLibrary.shared.file(summary, into: destination) {
+                    summary.albumNote = note
+                    PhotoLibrary.shared.lastSummary = summary
+                }
+            }
         }
     }
 }
 
 struct PhotoWindowView: View {
+    /// Set by the screenshot harness only.
+    nonisolated(unsafe) static var debugSelectAll = false
     @StateObject private var model = PhotoBrowserModel()
     @ObservedObject private var library = PhotoLibrary.shared
     @State private var confirmRemove = false
@@ -122,13 +136,16 @@ struct PhotoWindowView: View {
                         .padding(10)
                     }
                 }
-                if model.viewing != nil { PhotoViewer(model: model).transition(.opacity) }
             }
-            .animation(.easeInOut(duration: 0.15), value: model.viewing)
         }
+        // An open photo covers the whole window, sidebar and toolbar included: it is a picture, not a page with a picture on it.
+        .overlay {
+            if model.viewing != nil { PhotoViewer(model: model).ignoresSafeArea().transition(.opacity) }
+        }
+        .animation(.easeInOut(duration: 0.15), value: model.viewing)
         .frame(minWidth: 820, minHeight: 520)
         .tint(Color.effectiveAccent)
-        .onAppear { applyPending() }
+        .onAppear { applyPending(); if PhotoWindowView.debugSelectAll { Task { try? await Task.sleep(nanoseconds: 800_000_000); model.selectAll() } } }
         .onReceive(NotificationCenter.default.publisher(for: PhotoWindowController.requestNotification)) { _ in applyPending() }
         // Select all and delete from the keyboard, when the viewer is not open.
         .onKeyPress(characters: CharacterSet(charactersIn: "a"), phases: .down) { press in
@@ -160,45 +177,40 @@ struct PhotoWindowView: View {
     // MARK: Toolbar
 
     private var toolbar: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 0) {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(model.title).font(.system(size: 15, weight: .bold)).lineLimit(1)
                 Text(model.selection.isEmpty ? String(localized: "\(model.ids.count) photos") : String(localized: "\(model.selection.count) selected"))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             if !model.ids.isEmpty {
-                Button(model.selection.count == model.ids.count ? "Deselect All" : "Select All") {
+                ToolbarPillButton(title: model.selection.count == model.ids.count ? "Deselect All" : "Select All") {
                     if model.selection.count == model.ids.count { model.clearSelection() } else { model.selectAll() }
                 }
-                .buttonStyle(.plain).font(.system(size: 12))
             }
             if !model.selection.isEmpty { selectionActions }
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search", text: $model.search).textFieldStyle(.plain).frame(width: 130)
-                if !model.search.isEmpty {
-                    Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.secondary.opacity(0.15)))
-            HStack(spacing: 4) {
+            ToolbarSearchField(text: $model.search, width: 160)
+            HStack(spacing: 5) {
                 Image(systemName: "square.grid.3x3").font(.system(size: 10)).foregroundStyle(.secondary)
-                Slider(value: $model.thumbSize, in: 80...320).frame(width: 90).controlSize(.mini)
+                Slider(value: $model.thumbSize, in: 80...320).frame(width: 84).controlSize(.mini)
                 Image(systemName: "square.grid.2x2").font(.system(size: 12)).foregroundStyle(.secondary)
             }
+            .frame(height: ToolbarMetrics.height)
             Menu {
                 ForEach(PhotoSort.allCases) { sort in
                     Button { model.sort = sort } label: { if model.sort == sort { Label(Self.sortName(sort), systemImage: "checkmark") } else { Text(Self.sortName(sort)) } }
                 }
-            } label: { Image(systemName: "arrow.up.arrow.down") }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help(Text("Sort"))
-            Button { model.startSlideshow() } label: { Image(systemName: "play.rectangle") }
-                .buttonStyle(.plain).help(Text("Slideshow")).disabled(model.ids.isEmpty)
-            Button { PhotoActions.chooseFilesToAdd() } label: { Label("Add", systemImage: "plus") }
+            } label: {
+                Image(systemName: "arrow.up.arrow.down").font(.system(size: 13)).frame(width: ToolbarMetrics.height, height: ToolbarMetrics.height).contentShape(Rectangle())
+            }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().help(Text("Sort"))
+            ToolbarIconButton(symbol: "play.rectangle", help: "Slideshow") { model.startSlideshow() }
+                .disabled(model.ids.isEmpty)
+            ToolbarPillButton(title: "Add", symbol: "plus", prominent: true) { PhotoActions.chooseFilesToAdd() }
                 .help(Text("Add photos or folders"))
         }
+        .frame(height: ToolbarMetrics.height + 6)
         .padding(.horizontal, 14).padding(.vertical, 9)
     }
 
@@ -212,14 +224,14 @@ struct PhotoWindowView: View {
                         Button(album.name) { model.addToAlbum(album.id, photos: model.targets(for: nil)) }
                     }
                 }
-            } label: { Label("Add to album", systemImage: "rectangle.stack.badge.plus") }
-                .menuStyle(.borderlessButton).fixedSize()
-            Button { handleRemove() } label: {
-                if case .album = model.scope { Label("Remove from album", systemImage: "minus.circle") } else { Label("Remove", systemImage: "trash") }
+            } label: { ToolbarPillLabel(title: "Add to album", symbol: "rectangle.stack.badge.plus", showsChevron: true) }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            if case .album = model.scope {
+                ToolbarPillButton(title: "Remove from album", symbol: "minus.circle") { handleRemove() }
+            } else {
+                ToolbarIconButton(symbol: "trash", help: "Remove", role: .destructive) { handleRemove() }
             }
-            .buttonStyle(.plain)
         }
-        .font(.system(size: 12))
     }
 
     static func sortName(_ sort: PhotoSort) -> LocalizedStringKey {
@@ -291,5 +303,60 @@ private struct ToastBar: View {
             .padding(.horizontal, 14).padding(.vertical, 8)
             .background(.regularMaterial, in: Capsule())
             .transition(.opacity)
+    }
+}
+
+
+/// The strip under the open panel's file list: where the photos go as they are added.
+@MainActor
+final class AddToAlbumChooser: NSObject {
+    let view = NSView(frame: NSRect(x: 0, y: 0, width: 520, height: 34))
+    private let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let nameField = NSTextField()
+    private let albums: [Album]
+    private let newTag = -1
+
+    init(albums: [Album]) {
+        self.albums = albums
+        super.init()
+        let label = NSTextField(labelWithString: String(localized: "Also put in album:"))
+        label.font = .systemFont(ofSize: 12)
+        popup.addItem(withTitle: String(localized: "None (library only)"))
+        popup.menu?.addItem(.separator())
+        for (index, album) in albums.enumerated() {
+            let item = NSMenuItem(title: album.name, action: nil, keyEquivalent: "")
+            item.tag = index + 1
+            popup.menu?.addItem(item)
+        }
+        if !albums.isEmpty { popup.menu?.addItem(.separator()) }
+        let new = NSMenuItem(title: String(localized: "New album…"), action: nil, keyEquivalent: ""); new.tag = newTag
+        popup.menu?.addItem(new)
+        popup.target = self
+        popup.action = #selector(changed)
+        nameField.placeholderString = String(localized: "Album name")
+        nameField.isHidden = true
+        for sub in [label, popup, nameField] { sub.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(sub) }
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            popup.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 8),
+            popup.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            popup.widthAnchor.constraint(equalToConstant: 190),
+            nameField.leadingAnchor.constraint(equalTo: popup.trailingAnchor, constant: 8),
+            nameField.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            nameField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+        ])
+    }
+
+    @objc private func changed() {
+        nameField.isHidden = popup.selectedItem?.tag != newTag
+        if !nameField.isHidden { nameField.window?.makeFirstResponder(nameField) }
+    }
+
+    var destination: PhotoLibrary.Destination {
+        guard let tag = popup.selectedItem?.tag else { return .none }
+        if tag == newTag { return .new(nameField.stringValue) }
+        if tag >= 1, tag <= albums.count { return .existing(albums[tag - 1].id) }
+        return .none
     }
 }

@@ -107,17 +107,52 @@ final class PlayerLibrary: ObservableObject {
         }
         result = Self.search(result, for: search)
         switch sort {
-        case .recentlyAdded: result.sort { $0.addedAt > $1.addedAt }
-        case .title: result.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        case .recentlyAdded: result = Self.recentlyAddedOrder(result)
+        case .title:
+            result.sort { Self.ordered($0.title.localizedStandardCompare($1.title), $0, $1) }
         case .artist:
             result.sort {
                 let byArtist = $0.artist.localizedStandardCompare($1.artist)
-                return byArtist == .orderedSame ? $0.title.localizedStandardCompare($1.title) == .orderedAscending : byArtist == .orderedAscending
+                if byArtist != .orderedSame { return byArtist == .orderedAscending }
+                return Self.ordered($0.title.localizedStandardCompare($1.title), $0, $1)
             }
-        case .duration: result.sort { $0.duration > $1.duration }
-        case .recentlyPlayed: result.sort { ($0.lastPlayedAt ?? .distantPast) > ($1.lastPlayedAt ?? .distantPast) }
+        case .duration:
+            result.sort { $0.duration != $1.duration ? $0.duration > $1.duration : Self.byName($0, $1) }
+        case .recentlyPlayed:
+            result.sort {
+                let a = $0.lastPlayedAt ?? .distantPast, b = $1.lastPlayedAt ?? .distantPast
+                return a != b ? a > b : Self.byName($0, $1)
+            }
         }
         return result
+    }
+
+    /// File-name order with numbers read as numbers (episode 9 before episode 10), the tie-break for every sort.
+    static func byName(_ a: MediaItem, _ b: MediaItem) -> Bool {
+        a.path.localizedStandardCompare(b.path) == .orderedAscending
+    }
+
+    private static func ordered(_ comparison: ComparisonResult, _ a: MediaItem, _ b: MediaItem) -> Bool {
+        comparison == .orderedSame ? byName(a, b) : comparison == .orderedAscending
+    }
+
+    /// Newest first, but files added together stay together and in file-name order. A batch is a run of additions no more than
+    /// two minutes apart (a long import stamps each file a moment later than the last); without this a folder added in one go
+    /// came out backwards, last file first.
+    static func recentlyAddedOrder(_ items: [MediaItem], newestFirst: Bool = true) -> [MediaItem] {
+        var batchStart: [UUID: Date] = [:]
+        var current = Date.distantPast
+        var last: Date?
+        for item in items.sorted(by: { $0.addedAt < $1.addedAt }) {
+            if let last, item.addedAt.timeIntervalSince(last) <= 120 {} else { current = item.addedAt }
+            batchStart[item.id] = current
+            last = item.addedAt
+        }
+        return items.sorted { a, b in
+            let x = batchStart[a.id] ?? .distantPast, y = batchStart[b.id] ?? .distantPast
+            if x != y { return newestFirst ? x > y : x < y }
+            return byName(a, b)
+        }
     }
 
     /// Case- and accent-insensitive match on title, artist, album and file name; every word has to match somewhere.
@@ -335,6 +370,22 @@ final class PlayerLibrary: ObservableObject {
         guard let index = playlists.firstIndex(where: { $0.id == id }) else { return }
         let members = Set(playlists[index].itemIDs)
         playlists[index].itemIDs = ids.filter { members.contains($0) }
+        scheduleSave()
+    }
+
+    /// Puts a playlist in order in one go: by file name (episode 9 before 10), by title, or simply back to front.
+    func arrange(_ id: UUID, _ how: PlaylistArrange) {
+        guard let index = playlists.firstIndex(where: { $0.id == id }) else { return }
+        let members = playlists[index].itemIDs.compactMap { item($0) }
+        let ordered: [MediaItem]
+        switch how {
+        case .fileName: ordered = members.sorted { Self.byName($0, $1) }
+        case .title: ordered = members.sorted { $0.title.localizedStandardCompare($1.title) == .orderedSame ? Self.byName($0, $1) : $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        case .reverse: ordered = Array(members.reversed())
+        }
+        // Entries whose item is gone stay at the end rather than being lost silently.
+        let known = Set(ordered.map(\.id))
+        playlists[index].itemIDs = ordered.map(\.id) + playlists[index].itemIDs.filter { !known.contains($0) }
         scheduleSave()
     }
 

@@ -962,6 +962,39 @@ enum UISnapshot {
         var report = again; report.playlistName = "Other"
         check("the result line names the playlist", report.report.headline.contains("Other") || report.report.headline.contains("「Other」") || report.report.headline.contains("“Other”"), report.report.headline)
         first = ImportSummary()
+        // ---- the order of things added together
+        let natural = intoLib.items.sorted { PlayerLibrary.byName($0, $1) }.map(\.id)
+        check("files added together are listed in file-name order, not backwards", intoLib.items(matching: .all, sort: .recentlyAdded).map(\.id) == natural)
+        let stamped = (1...12).map { i -> MediaItem in
+            var m = MediaItem(path: "/x/ep\(i).mp3", bookmark: nil, title: "ep\(i)", artist: "", album: "", duration: 60, kind: .audio)
+            m.addedAt = Date(timeIntervalSince1970: 1_000_000 + Double(13 - i))   // stamped backwards, as concurrent probing does
+            return m
+        }
+        check("episode 2 comes before episode 10 inside a batch", PlayerLibrary.recentlyAddedOrder(stamped).map(\.title) == (1...12).map { "ep\($0)" })
+        var older = MediaItem(path: "/x/old.mp3", bookmark: nil, title: "old", artist: "", album: "", duration: 60, kind: .audio)
+        older.addedAt = Date(timeIntervalSince1970: 1_000_000 - 86_400)
+        var newer = MediaItem(path: "/x/new.mp3", bookmark: nil, title: "new", artist: "", album: "", duration: 60, kind: .audio)
+        newer.addedAt = Date(timeIntervalSince1970: 1_000_000 + 86_400)
+        check("a newer batch is still listed before an older one", PlayerLibrary.recentlyAddedOrder(stamped + [older, newer]).map(\.title).prefix(1) == ["new"] && PlayerLibrary.recentlyAddedOrder(stamped + [older, newer]).last?.title == "old")
+        // ---- selecting several rows (Shift and Command)
+        let rowIDs = (0..<10).map { _ in UUID() }
+        let pick = PlayerUI.selection(afterClicking:in:current:anchor:shift:command:)
+        check("a plain click selects only that row", pick(rowIDs[3], rowIDs, [rowIDs[1], rowIDs[2]], rowIDs[1], false, false) == [rowIDs[3]])
+        check("Command adds a row", pick(rowIDs[5], rowIDs, [rowIDs[3]], rowIDs[3], false, true) == [rowIDs[3], rowIDs[5]])
+        check("Command on a selected row takes it out", pick(rowIDs[3], rowIDs, [rowIDs[3], rowIDs[5]], rowIDs[3], false, true) == [rowIDs[5]])
+        check("Shift selects the range from the anchor, downwards", pick(rowIDs[6], rowIDs, [rowIDs[2]], rowIDs[2], true, false) == Set(rowIDs[2...6]))
+        check("Shift selects the range from the anchor, upwards", pick(rowIDs[1], rowIDs, [rowIDs[4]], rowIDs[4], true, false) == Set(rowIDs[1...4]))
+        check("Shift replaces an earlier range", pick(rowIDs[8], rowIDs, Set(rowIDs[2...6]), rowIDs[2], true, false) == Set(rowIDs[2...8]))
+        check("Shift with Command adds the range to what is selected", pick(rowIDs[9], rowIDs, [rowIDs[0], rowIDs[5]], rowIDs[5], true, true) == Set([rowIDs[0]] + Array(rowIDs[5...9])))
+        check("Shift without an anchor acts like a plain click", pick(rowIDs[4], rowIDs, [], nil, true, false) == [rowIDs[4]])
+        // ---- arranging a playlist
+        let backwards = intoLib.createPlaylist(named: "Backwards", with: natural.reversed())
+        intoLib.arrange(backwards.id, .fileName)
+        check("Arrange by file name puts a reversed playlist right", intoLib.playlists.first { $0.id == backwards.id }?.itemIDs == natural)
+        intoLib.arrange(backwards.id, .reverse)
+        check("Reverse order turns it round", intoLib.playlists.first { $0.id == backwards.id }?.itemIDs == natural.reversed())
+        intoLib.arrange(backwards.id, .title)
+        check("Arrange by title keeps every track", Set(intoLib.playlists.first { $0.id == backwards.id }?.itemIDs ?? []) == Set(natural))
         let chooser = AddToPlaylistChooser(playlists: intoLib.playlists, preselect: otherList.id)
         if case .existing(let id) = chooser.choice { check("the chooser preselects the playlist being viewed", id == otherList.id) } else { check("the chooser preselects the playlist being viewed", false) }
         let plain = AddToPlaylistChooser(playlists: intoLib.playlists, preselect: nil)
@@ -998,7 +1031,7 @@ enum UISnapshot {
             window.contentViewController = NSHostingController(rootView: root)
             window.setFrameOrigin(NSPoint(x: -20_000, y: -20_000))
             window.orderFront(nil)
-            await sleep(2)
+            await sleep(3)
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
             p.arguments = ["-x", "-o", "-l\(window.windowNumber)", "\(dir)/\(name).png"]
@@ -1040,8 +1073,14 @@ enum UISnapshot {
         }
         // Sidebars are drawn by AppKit table views, which an off-screen bitmap snapshot leaves blank: the window server's own
         // capture of the (off-screen) window shows them.
+        PlayerManagerView.debugSelectAll = true; PhotoWindowView.debugSelectAll = true
         await windowShot(PlayerManagerView(), name: "report-5-manager")
         await windowShot(PhotoWindowView(), name: "report-6-photos")
+        if let first = await PhotoLibrary.shared.ids(scope: .all, sort: .name).first {
+            PhotoWindowView.debugSelectAll = false
+            PhotoWindowController.shared.pending = (.all, first)
+            await windowShot(PhotoWindowView(), name: "report-13-viewer-rest")
+        }
         try? lines.joined(separator: "\n").write(toFile: dir + "/report.txt", atomically: true, encoding: .utf8)
         lines.removeAll()
     }

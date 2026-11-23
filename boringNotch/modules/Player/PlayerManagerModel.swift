@@ -54,7 +54,12 @@ final class PlayerManagerModel: ObservableObject {
             return
         }
         items = Self.search(items, for: search)
-        items.sort(using: sortOrder)
+        if let first = sortOrder.first, first.keyPath == \MediaItem.addedAt {
+            items = PlayerLibrary.recentlyAddedOrder(items, newestFirst: first.order == .reverse)
+        } else {
+            // Equal values (the same artist, the same length) fall back to file-name order instead of an arbitrary one.
+            items.sort(using: sortOrder + [KeyPathComparator(\.path, comparator: .localizedStandard)])
+        }
         rows = items
         selection.formIntersection(Set(items.map(\.id)))
     }

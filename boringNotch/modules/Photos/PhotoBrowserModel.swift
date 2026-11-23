@@ -156,12 +156,24 @@ final class PhotoBrowserModel: ObservableObject {
 
     func open(_ id: Int64) {
         viewing = id
-        poke()
+        // A photo opens as a picture and nothing else; the controls come when the pointer moves and go again when it rests.
+        chromeVisible = false
+        lastActivity = .distantPast
+        startChromeTimer()
     }
 
     func closeViewer() {
         viewing = nil
         stopSlideshow()
+        chromeTimer?.invalidate(); chromeTimer = nil
+        chromeVisible = true
+    }
+
+    private func startChromeTimer() {
+        chromeTimer?.invalidate()
+        chromeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hideChromeIfIdle() }
+        }
     }
 
     func step(_ offset: Int, wrapping: Bool = false) {
@@ -180,17 +192,13 @@ final class PhotoBrowserModel: ObservableObject {
         slideshowActive = true
         restartSlideshowTimer()
         poke()
-        chromeTimer?.invalidate()
-        chromeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.hideChromeIfIdle() }
-        }
+        startChromeTimer()
     }
 
     func stopSlideshow() {
         slideshowActive = false
         slideshowTimer?.invalidate(); slideshowTimer = nil
-        chromeTimer?.invalidate(); chromeTimer = nil
-        chromeVisible = true
+        if viewing == nil { chromeTimer?.invalidate(); chromeTimer = nil; chromeVisible = true }
     }
 
     func toggleSlideshow() { slideshowActive ? stopSlideshow() : startSlideshow() }
@@ -211,8 +219,9 @@ final class PhotoBrowserModel: ObservableObject {
     }
 
     private func hideChromeIfIdle() {
-        guard chromeVisible, slideshowActive, Date().timeIntervalSince(lastActivity) > 2.5 else { return }
+        guard chromeVisible, viewing != nil, Date().timeIntervalSince(lastActivity) > 1.8 else { return }
         chromeVisible = false
-        NSCursor.setHiddenUntilMouseMoves(true)
+        // The pointer goes too, but only while a slideshow plays and the photo window is the one in front.
+        if slideshowActive, PhotoWindowController.shared.window?.isKeyWindow == true { NSCursor.setHiddenUntilMouseMoves(true) }
     }
 }

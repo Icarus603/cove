@@ -102,6 +102,19 @@ final class PhotoStore: @unchecked Sendable {
         }
     }
 
+    /// Ids for these paths (those that are in the library), to file just-added photos into albums.
+    func idsByPath(_ paths: [String]) async throws -> [String: Int64] {
+        try await perform { db in
+            var result: [String: Int64] = [:]
+            for chunk in paths.chunked(into: 500) {
+                let marks = Array(repeating: "?", count: chunk.count).joined(separator: ",")
+                let statement = try db.prepare("SELECT path, id FROM photos WHERE path IN (\(marks))")
+                for pair in try statement.rows(chunk.map { .text($0) }, { ($0.text(0), $0.int(1)) }) { result[pair.0] = pair.1 }
+            }
+            return result
+        }
+    }
+
     /// The ids of what to show, in order. Search matches anywhere in the path (file and folder names).
     func ids(scope: PhotoScope, search: String, sort: PhotoSort) async throws -> [Int64] {
         try await perform { db in
@@ -119,10 +132,11 @@ final class PhotoStore: @unchecked Sendable {
             }
             if !conditions.isEmpty { sql += " WHERE " + conditions.joined(separator: " AND ") }
             switch sort {
-            case .takenNewest: sql += " ORDER BY p.taken DESC, p.id DESC"
-            case .takenOldest: sql += " ORDER BY p.taken ASC, p.id ASC"
-            case .name: sql += " ORDER BY p.name COLLATE NOCASE ASC, p.id ASC"
-            case .addedNewest: sql += " ORDER BY p.added DESC, p.id DESC"
+            // Equal times (a burst, a folder added in one go) fall back to file-name order, never to the order files happened to finish.
+            case .takenNewest: sql += " ORDER BY p.taken DESC, p.name COLLATE NOCASE DESC, p.id DESC"
+            case .takenOldest: sql += " ORDER BY p.taken ASC, p.name COLLATE NOCASE ASC, p.id ASC"
+            case .name: sql += " ORDER BY p.name COLLATE NOCASE ASC, p.path COLLATE NOCASE ASC, p.id ASC"
+            case .addedNewest: sql += " ORDER BY p.added DESC, p.path COLLATE NOCASE ASC, p.id ASC"
             }
             return try db.prepare(sql).rows(values) { $0.int(0) }
         }

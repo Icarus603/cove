@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import SwiftUI
 import UniformTypeIdentifiers
 
 enum MediaKind: String, Codable {
@@ -96,6 +97,19 @@ struct ImportSummary: Equatable {
 
     var isEmpty: Bool { added == 0 && alreadyInLibrary == 0 && skipped.isEmpty && itemIDs.isEmpty }
     var report: ImportReport { ImportReport(domain: .media, added: added, alreadyInLibrary: alreadyInLibrary, skipped: skipped, playlistName: playlistName) }
+}
+
+enum PlaylistArrange: CaseIterable, Identifiable {
+    case fileName, title, reverse
+    var id: Self { self }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .fileName: return "By file name"
+        case .title: return "By title"
+        case .reverse: return "Reverse order"
+        }
+    }
 }
 
 enum LibraryFilter: Hashable {

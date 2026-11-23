@@ -53,6 +53,7 @@ struct PhotoViewer: View {
     @State private var container: CGSize = .zero
     @State private var swipeAccumulator: CGFloat = 0
     @State private var lastSwipe = Date.distantPast
+    @State private var lastPoint: CGPoint?
     @FocusState private var focused: Bool
 
     private var isGIF: Bool { photo?.url.pathExtension.lowercased() == "gif" }
@@ -91,7 +92,13 @@ struct PhotoViewer: View {
         .focused($focused)
         .focusEffectDisabled()
         .onAppear { focused = true }
-        .onContinuousHover { _ in model.poke() }
+        .onContinuousHover { phase in
+            // Only a pointer that really moved counts; a view laid out again under a resting pointer must not call the controls back.
+            guard case .active(let point) = phase else { return }
+            defer { lastPoint = point }
+            if let last = lastPoint, hypot(point.x - last.x, point.y - last.y) < 2 { return }
+            model.poke()
+        }
         .onKeyPress { press in
             model.poke()
             return handleKey(press)
@@ -243,42 +250,48 @@ struct PhotoViewer: View {
 
     // MARK: Controls
 
+    /// Three small groups floating over the picture, no bar: close on the left, where you are in the middle, the few things
+    /// worth having on the right. Everything else (zoom, slideshow, next and previous) is a gesture or a key.
     private var topBar: some View {
-        HStack(spacing: 6) {
-            iconButton("xmark", help: "Close") { model.closeViewer() }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(photo?.name ?? "").font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                if let photo { Text(photo.taken.formatted(date: .long, time: .shortened)).font(.system(size: 11)).foregroundStyle(.white.opacity(0.6)) }
-            }
+        HStack(alignment: .center, spacing: 10) {
+            floating { iconButton("xmark", help: "Close") { model.closeViewer() } }
             Spacer()
             if let index = model.viewingIndex {
-                Text("\(index + 1) / \(model.ids.count)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.white.opacity(0.6))
+                floating {
+                    Text("\(index + 1) / \(model.ids.count)").font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.85)).padding(.horizontal, 10).frame(height: 28)
+                }
             }
             Spacer()
-            iconButton(model.slideshowActive ? "pause.fill" : "play.fill", help: model.slideshowActive ? "Stop slideshow" : "Start slideshow") { model.toggleSlideshow() }
-            iconButton("plus.magnifyingglass", help: "Zoom in") { zoom(to: scale * 1.5) }
-            iconButton("minus.magnifyingglass", help: "Zoom out") { zoom(to: scale / 1.5) }
-            Menu {
-                Button { model.newAlbum(named: "", with: viewingTargets) } label: { Label("New album…", systemImage: "plus") }
-                if !library.albums.isEmpty { Divider() }
-                ForEach(library.albums) { album in
-                    Button(album.name) { model.addToAlbum(album.id, photos: viewingTargets); if let id = model.viewing { refreshAlbumNames(for: id) } }
+            floating {
+                HStack(spacing: 0) {
+                    Menu {
+                        Button { model.newAlbum(named: "", with: viewingTargets) } label: { Label("New album…", systemImage: "plus") }
+                        if !library.albums.isEmpty { Divider() }
+                        ForEach(library.albums) { album in
+                            Button(album.name) { model.addToAlbum(album.id, photos: viewingTargets); if let id = model.viewing { refreshAlbumNames(for: id) } }
+                        }
+                    } label: { Image(systemName: "rectangle.stack.badge.plus").font(.system(size: 13, weight: .medium)).foregroundStyle(.white).frame(width: 28, height: 28).contentShape(Rectangle()) }
+                        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().help(Text("Add to album"))
+                    iconButton("info.circle", help: "Info", active: showInfo) { showInfo.toggle() }
+                    iconButton("arrow.up.left.and.arrow.down.right", help: "Full screen") { PhotoWindowController.shared.toggleFullScreen() }
                 }
-            } label: { Image(systemName: "rectangle.stack.badge.plus").font(.system(size: 14, weight: .semibold)).frame(width: 28, height: 28) }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help(Text("Add to album"))
-            iconButton("info.circle", help: "Info", active: showInfo) { showInfo.toggle() }
-            iconButton("arrow.up.left.and.arrow.down.right", help: "Full screen") { PhotoWindowController.shared.toggleFullScreen() }
+            }
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 26)
-        .background(LinearGradient(colors: [.black.opacity(0.75), .clear], startPoint: .top, endPoint: .bottom))
+        .padding(.leading, 86).padding(.trailing, 14).padding(.top, 8)   // clear of the window's own buttons
+    }
+
+    private func floating<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .background(Capsule().fill(Color.black.opacity(0.55)))
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.10)))
     }
 
     private var viewingTargets: [Int64] { model.viewing.map { [$0] } ?? [] }
 
     private func iconButton(_ symbol: String, help: LocalizedStringKey, active: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 14, weight: .semibold))
+            Image(systemName: symbol).font(.system(size: 13, weight: .medium))
                 .foregroundStyle(active ? Color.effectiveAccent : .white)
                 .frame(width: 28, height: 28).contentShape(Rectangle())
         }
@@ -287,8 +300,8 @@ struct PhotoViewer: View {
 
     private func arrow(_ symbol: String, offset: Int, enabled: Bool) -> some View {
         Button { model.step(offset, wrapping: model.slideshowActive); model.restartSlideshowTimer() } label: {
-            Image(systemName: symbol).font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
-                .frame(width: 40, height: 56).background(Circle().fill(Color.black.opacity(0.35)).frame(width: 44, height: 44))
+            Image(systemName: symbol).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 36, height: 56).background(Circle().fill(Color.black.opacity(0.45)).frame(width: 36, height: 36))
         }
         .buttonStyle(.plain)
         .opacity(enabled ? 1 : 0.25)

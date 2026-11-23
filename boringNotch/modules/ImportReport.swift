@@ -154,8 +154,9 @@ struct ImportReport: Equatable {
     var isClean: Bool { skipped.isEmpty }
 
     var headline: String {
-        if let playlistName, domain == .media, added + alreadyInLibrary > 0 {
-            return String(localized: "Put \(added + alreadyInLibrary) files in “\(playlistName)”")
+        if let playlistName, added + alreadyInLibrary > 0 {
+            return domain == .media ? String(localized: "Put \(added + alreadyInLibrary) files in “\(playlistName)”")
+                                    : String(localized: "Put \(added + alreadyInLibrary) photos in \(playlistName)")
         }
         if added == 0 && alreadyInLibrary > 0 && skipped.isEmpty {
             return String(localized: "Everything was already in the library")
