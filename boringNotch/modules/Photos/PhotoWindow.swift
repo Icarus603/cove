@@ -120,23 +120,26 @@ struct PhotoWindowView: View {
     @AppStorage("photos.sidebarVisible") private var sidebarVisible = false
 
     var body: some View {
-        NavigationSplitView(columnVisibility: Binding(get: { sidebarVisible ? .all : .detailOnly }, set: { sidebarVisible = ($0 != .detailOnly) })) {
-            PhotoSidebar(model: model)
-                .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)
-        } detail: {
-            ZStack {
-                VStack(spacing: 0) {
-                    toolbar
-                    Divider()
-                    ZStack(alignment: .bottom) {
-                        content
-                        VStack(spacing: 6) {
-                            if let progress = library.importProgress { ImportBar(progress: progress) }
-                            if let summary = library.lastSummary { ImportReportBar(report: summary.report) { library.lastSummary = nil }.frame(maxWidth: 560) }
-                            if let toast = model.toast { ToastBar(text: toast) }
-                        }
-                        .padding(10)
+        // The sidebar is laid out by hand rather than with a system split view: that one puts its own button in the title bar,
+        // and it could not be taken off an open photo.
+        HStack(spacing: 0) {
+            if sidebarVisible {
+                PhotoSidebar(model: model)
+                    .frame(width: 220)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                Divider()
+            }
+            VStack(spacing: 0) {
+                toolbar
+                Divider()
+                ZStack(alignment: .bottom) {
+                    content
+                    VStack(spacing: 6) {
+                        if let progress = library.importProgress { ImportBar(progress: progress) }
+                        if let summary = library.lastSummary { ImportReportBar(report: summary.report) { library.lastSummary = nil }.frame(maxWidth: 560) }
+                        if let toast = model.toast { ToastBar(text: toast) }
                     }
+                    .padding(10)
                 }
             }
         }
@@ -146,8 +149,6 @@ struct PhotoWindowView: View {
         }
         .animation(.easeInOut(duration: 0.15), value: model.viewing)
         .frame(minWidth: 820, minHeight: 520)
-        // The title bar's sidebar button means nothing while a photo is open (and used to pull the sidebar over it): hide it then.
-        .toolbar(model.viewing == nil ? .visible : .hidden, for: .windowToolbar)
         .tint(Color.effectiveAccent)
         .onAppear { applyPending(); if PhotoWindowView.debugSelectAll { Task { try? await Task.sleep(nanoseconds: 800_000_000); model.selectAll() } } }
         .onReceive(NotificationCenter.default.publisher(for: PhotoWindowController.requestNotification)) { _ in applyPending() }
@@ -194,6 +195,7 @@ struct PhotoWindowView: View {
 
     private var mainBar: some View {
         HStack(alignment: .center, spacing: 8) {
+            ToolbarIconButton(symbol: "sidebar.left", help: sidebarVisible ? "Hide albums" : "Show albums") { withAnimation(.easeInOut(duration: 0.15)) { sidebarVisible.toggle() } }
             VStack(alignment: .leading, spacing: 1) {
                 Text(model.title).font(.system(size: 15, weight: .bold)).lineLimit(1)
                 Text(String(localized: "\(model.ids.count) photos")).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)

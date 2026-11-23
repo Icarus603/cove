@@ -73,13 +73,15 @@ struct PhotoGridView: View {
                                 let flags = NSEvent.modifierFlags
                                 model.click(id, command: flags.contains(.command), shift: flags.contains(.shift))
                             }
-                            .onDrag { dragProvider(for: id) }
+                            .draggable(dragString(for: id))
                             // In an album with its own order, a photo dropped on another goes in front of it.
                             .overlay(alignment: .leading) {
                                 if dropTarget == id { Rectangle().fill(Color.effectiveAccent).frame(width: 3) }
                             }
-                            .onDrop(of: [.plainText], isTargeted: Binding(get: { dropTarget == id }, set: { dropTarget = $0 ? id : (dropTarget == id ? nil : dropTarget) })) { providers in
-                                drop(providers, before: id)
+                            .dropDestination(for: String.self) { items, _ in
+                                drop(items, before: id)
+                            } isTargeted: { targeted in
+                                if targeted { dropTarget = id } else if dropTarget == id { dropTarget = nil }
                             }
                             .contextMenu { PhotoMenu(model: model, id: id) }
                     }
@@ -90,20 +92,21 @@ struct PhotoGridView: View {
         }
     }
 
-    private func drop(_ providers: [NSItemProvider], before target: Int64) -> Bool {
-        guard model.canArrange, let provider = providers.first(where: { $0.canLoadObject(ofClass: NSString.self) }) else { return false }
-        _ = provider.loadObject(ofClass: NSString.self) { item, _ in
-            guard let text = item as? String, text.hasPrefix("cove-photos:") else { return }
-            let ids = Set(text.dropFirst("cove-photos:".count).split(separator: ",").compactMap { Int64($0) })
-            Task { @MainActor in model.moveInAlbum(ids, .before(target)); dropTarget = nil }
-        }
+    /// A photo dropped on another goes in front of it, in an album that keeps its own order.
+    private func drop(_ items: [String], before target: Int64) -> Bool {
+        defer { dropTarget = nil }
+        guard model.canArrange, let text = items.first(where: { $0.hasPrefix(Self.dragPrefix) }) else { return false }
+        let ids = Set(text.dropFirst(Self.dragPrefix.count).split(separator: ",").compactMap { Int64($0) })
+        guard !ids.isEmpty else { return false }
+        model.moveInAlbum(ids, .before(target))
         return true
     }
 
-    /// What is dragged to an album in the sidebar: the ids of the selection, or of this photo alone.
-    private func dragProvider(for id: Int64) -> NSItemProvider {
-        let ids = model.targets(for: id)
-        return NSItemProvider(object: ("cove-photos:" + ids.map(String.init).joined(separator: ",")) as NSString)
+    static let dragPrefix = "cove-photos:"
+
+    /// What is dragged (to an album in the sidebar, or to another photo): the ids of the selection, or of this photo alone.
+    private func dragString(for id: Int64) -> String {
+        Self.dragPrefix + model.targets(for: id).map(String.init).joined(separator: ",")
     }
 }
 

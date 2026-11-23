@@ -33722,6 +33722,38 @@
           }
         }
       }
+    },
+    "Hide albums" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏相簿清單"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏相册列表"
+          }
+        }
+      }
+    },
+    "Show albums" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示相簿清單"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示相册列表"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

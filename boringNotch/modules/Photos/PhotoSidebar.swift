@@ -90,19 +90,13 @@ struct PhotoSidebar: View {
                 }
             }
         }
-        .onDrop(of: [.plainText], isTargeted: dropBinding(for: album.id)) { providers in drop(providers, on: album) }
+        .dropDestination(for: String.self) { items, _ in drop(items, on: album) } isTargeted: { targeted in
+            if targeted { dropTarget = album.id } else if dropTarget == album.id { dropTarget = nil }
+        }
         .contextMenu {
             Button("Rename") { renameText = album.name; renaming = album.id }
             Button("Delete…", role: .destructive) { deleting = album }
         }
-    }
-
-    private func dropBinding(for id: Int64) -> Binding<Bool> {
-        Binding(
-            get: { dropTarget == id },
-            set: { targeted in
-                if targeted { dropTarget = id } else if dropTarget == id { dropTarget = nil }
-            })
     }
 
     private func commitRename(_ album: Album) {
@@ -120,13 +114,12 @@ struct PhotoSidebar: View {
     }
 
     /// Photos dragged from the grid (they carry their ids as text).
-    private func drop(_ providers: [NSItemProvider], on album: Album) -> Bool {
-        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: NSString.self) }) else { return false }
-        _ = provider.loadObject(ofClass: NSString.self) { item, _ in
-            guard let text = item as? String, text.hasPrefix("cove-photos:") else { return }
-            let ids = text.dropFirst("cove-photos:".count).split(separator: ",").compactMap { Int64($0) }
-            Task { @MainActor in model.addToAlbum(album.id, photos: ids) }
-        }
+    private func drop(_ items: [String], on album: Album) -> Bool {
+        defer { dropTarget = nil }
+        guard let text = items.first(where: { $0.hasPrefix(PhotoGridView.dragPrefix) }) else { return false }
+        let ids = text.dropFirst(PhotoGridView.dragPrefix.count).split(separator: ",").compactMap { Int64($0) }
+        guard !ids.isEmpty else { return false }
+        model.addToAlbum(album.id, photos: ids)
         return true
     }
 }

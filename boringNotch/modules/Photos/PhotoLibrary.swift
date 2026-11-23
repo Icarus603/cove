@@ -319,6 +319,7 @@ final class PhotoLibrary: ObservableObject {
 
     func setAlbumOrder(_ albumID: Int64, ordered: [Int64]) async {
         try? await store?.setAlbumOrder(albumID, ordered: ordered)
+        await changed()   // the notch's strip shows the new order too
     }
 
     func renameAlbum(_ id: Int64, to name: String) async {

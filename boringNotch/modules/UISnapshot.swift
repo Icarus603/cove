@@ -1070,6 +1070,26 @@ enum UISnapshot {
             await render(ImportReportView(report: two) {}, size: CGSize(width: 460, height: 320), name: "report-11-small-window", dir: dir, settle: 0.8)
             await render(ImportReportView(report: two) {}, size: CGSize(width: 620, height: 460), name: "report-12-default-window", dir: dir, settle: 0.8)
         }
+        // The real photo window (title bar and all), off screen: at rest, and with a photo open.
+        if let first = await PhotoLibrary.shared.ids(scope: .all, sort: .name).first {
+            UserDefaults.standard.set(true, forKey: "photos.sidebarVisible")
+            PhotoWindowController.shared.show(scope: .all)
+            if let window = PhotoWindowController.shared.window {
+                window.setFrame(NSRect(x: -20_000, y: -20_000, width: 1000, height: 640), display: true)
+                await sleep(3)
+                func capture(_ name: String) {
+                    let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                    p.arguments = ["-x", "-o", "-l\(window.windowNumber)", "\(dir)/\(name).png"]
+                    try? p.run(); p.waitUntilExit()
+                }
+                capture("report-14-real-window-grid")
+                PhotoWindowController.shared.show(scope: .all, photo: first)
+                window.setFrame(NSRect(x: -20_000, y: -20_000, width: 1000, height: 640), display: true)
+                await sleep(3)
+                capture("report-15-real-window-viewer")
+                window.close()
+            }
+        }
         // The mini player with a video playing: the video itself in the corner.
         if let clip = PlayerLibrary.shared.items.first(where: { $0.kind == .video }) {
             PlayerEngine.shared.volume = 0

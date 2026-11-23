@@ -29,7 +29,9 @@ final class PhotoNotchModel: ObservableObject {
         task?.cancel()
         task = Task { [weak self] in
             guard let self else { return }
-            let all = await PhotoLibrary.shared.ids(scope: scope, sort: .takenNewest)
+            // An album shows its photos in the order the user arranged; all photos, the newest first.
+            let isAlbum: Bool = { if case .album = scope { return true } else { return false } }()
+            let all = await PhotoLibrary.shared.ids(scope: scope, sort: isAlbum ? .manual : .takenNewest)
             guard !Task.isCancelled else { return }
             ids = Array(all.prefix(300))
             if case .album(let id) = scope, !PhotoLibrary.shared.albums.contains(where: { $0.id == id }) { scope = .all }
