@@ -13,6 +13,8 @@
 	<string>https://github.com/Icarus603/cove/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>XvcdPCLY9vL4YmGIISlrl/DyaCZZl6b/H/xPZ+GvF8g=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>3600</integer>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict/>
