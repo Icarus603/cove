@@ -29,3 +29,9 @@ is shown / left · `{"type":"action","id":"…"}` when a button is pressed.
 
 Limits: lines up to 256 KB, view trees up to 24 levels deep. A plugin that exits is restarted up to 5 times.
 It runs with your user permissions in its own folder and a minimal environment (`NOTCH_PLUGIN_ID`, `NOTCH_PLUGIN_DIR`).
+
+## Examples
+
+`Plugins/examples/` has three small shell plugins to copy from: `clock` (redraws while its tab is open), `sysmon` (CPU and
+memory bars, refreshed every 2 seconds) and `timer` (countdown with buttons, a badge beside the closed notch while it
+runs, and `attention` when it reaches zero). To try one, use **Settings → Modules → Plugins → Add plugin…** and pick its folder.

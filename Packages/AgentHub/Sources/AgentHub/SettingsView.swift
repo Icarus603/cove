@@ -1377,6 +1377,15 @@ private struct AppearancePage: View {
 
     var body: some View {
         Form {
+            if embedded {
+                Section(l10n["collapsed_bar_preview"]) {
+                    CollapsedBarPreview()
+                    Text(l10n["collapsed_bar_preview_desc"])
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section(l10n["preview"]) {
                 AppearancePreview(
                     fontSize: contentFontSize,
@@ -3302,4 +3311,37 @@ public struct AgentMascotSettingsView: View {
 public struct AgentSoundSettingsView: View {
     public init() {}
     public var body: some View { SoundPage() }
+}
+
+
+/// The closed notch as the user would see it, drawn with the real collapsed bar over a marker for the display's
+/// physical notch. Content under the marker is hidden on the real screen, so the preview shows it dimmed.
+private struct CollapsedBarPreview: View {
+    @ObservedObject private var runtime = AgentRuntime.shared
+
+    private var screen: NSScreen { NSScreen.main ?? NSScreen.screens[0] }
+    private var hasNotch: Bool { screen.safeAreaInsets.top > 0 }
+    private var notchWidth: CGFloat {
+        guard hasNotch, let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea else { return 185 }
+        return screen.frame.width - left.width - right.width
+    }
+    private var notchHeight: CGFloat { hasNotch ? screen.safeAreaInsets.top : 32 }
+
+    var body: some View {
+        ZStack {
+            AgentCompactBar(appState: runtime.appState, notchWidth: notchWidth, notchHeight: notchHeight,
+                            screenWidth: screen.frame.width, hasNotch: hasNotch)
+                .background(UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14, style: .continuous).fill(.black))
+            if hasNotch {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.gray.opacity(0.55))
+                    .frame(width: notchWidth, height: notchHeight)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: notchHeight + 12, alignment: .top)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(L10n.shared["collapsed_bar_preview"]))
+    }
 }

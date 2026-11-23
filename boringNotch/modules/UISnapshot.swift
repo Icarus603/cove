@@ -90,9 +90,46 @@ enum UISnapshot {
         }
     }
 
+    /// With COVE_SHOT_DIR set, takes real screen captures (what the user sees, sidebar and notch included, which the
+    /// off-screen snapshots cannot draw): the closed notch strip, then each settings tab named in COVE_SHOT_TABS
+    /// (comma separated ids, default all). `scripts/shots.sh` builds and runs this.
+    static func screenshotsIfRequested() {
+        let env = ProcessInfo.processInfo.environment
+        guard let dir = env["COVE_SHOT_DIR"] else { return }
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        Task { @MainActor in
+            await sleep(4)
+            func capture(_ args: [String], _ name: String) {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                p.arguments = ["-x"] + args + ["\(dir)/\(name).png"]
+                try? p.run()
+                p.waitUntilExit()
+            }
+            if let screen = NSScreen.main {
+                capture(["-R0,0,\(Int(screen.frame.width)),80"], "notch")
+            }
+            SettingsWindowController.shared.showWindow()
+            await sleep(1.5)
+            let all = ["General", "Appearance", "Modules", "Media", "Calendar", "HUD", "Battery", "Shelf", "Agents", "AgentDisplay",
+                       "AgentMascots", "AgentSound", "AgentAutomation", "AgentRemote", "AgentBuddy", "AgentHooks", "Shortcuts", "Advanced", "About"]
+            let tabs = env["COVE_SHOT_TABS"].map { $0.split(separator: ",").map(String.init) } ?? all
+            if let number = SettingsWindowController.shared.window?.windowNumber {
+                for tab in tabs {
+                    NotificationCenter.default.post(name: Notification.Name("CoveSelectSettingsTab"), object: tab)
+                    await sleep(1)
+                    capture(["-o", "-l\(number)"], "settings-\(tab)")
+                }
+            }
+            try? "done".write(toFile: dir + "/DONE", atomically: true, encoding: .utf8)
+            NSApp.terminate(nil)
+        }
+    }
+
     static func runIfRequested() {
         dropTestIfRequested()
         reportWindowsIfRequested()
+        screenshotsIfRequested()
         guard let dir = ProcessInfo.processInfo.environment["COVE_SNAPSHOT_DIR"] else { return }
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         Task { @MainActor in

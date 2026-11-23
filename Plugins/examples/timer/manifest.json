@@ -1,0 +1,7 @@
+{
+  "id": "app.cove.example.timer",
+  "name": { "default": "Timer", "zh-Hant": "計時器", "zh-Hans": "计时器", "ja": "タイマー" },
+  "symbol": "timer",
+  "executable": "run.sh",
+  "order": 320
+}

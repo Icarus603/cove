@@ -148,6 +148,9 @@ struct SettingsView: View {
         .background(Color(NSColor.windowBackgroundColor))
         .tint(.effectiveAccent)
         .id(accentColorUpdateTrigger)
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("CoveSelectSettingsTab"))) { note in
+            if let id = note.object as? String { selectedTab = id }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AccentColorChanged"))) { _ in
             accentColorUpdateTrigger = UUID()
         }
