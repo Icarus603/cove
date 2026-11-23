@@ -58,6 +58,7 @@ struct ContentView: View {
     }
 
     @ObservedObject private var agentBar = AppModules.barState
+    @ObservedObject private var playerMini = PlayerMiniState.shared
 
     /// CodeIsland's collapsed bar (mascot beside the notch) shows while agents work or wait, and while
     /// nothing else (music) is using the closed notch.
@@ -68,6 +69,12 @@ struct ContentView: View {
             musicActive: musicManager.isPlaying || !musicManager.isPlayerIdle,
             musicLiveActivityEnabled: coordinator.musicLiveActivityEnabled
         )
+    }
+
+    /// The Player's mini bar shows while something plays, unless an agent is working or waiting (that takes the room).
+    private var playerBarShown: Bool {
+        guard vm.notchState == .closed, !vm.hideOnClosed, playerMini.visible else { return false }
+        return !AppModules.agents.isCompactBarBusy
     }
 
     @ViewBuilder
@@ -89,6 +96,8 @@ struct ContentView: View {
             && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
         {
             chinWidth = 640
+        } else if playerBarShown {
+            chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
         } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music)
             && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle)
             && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed
@@ -297,6 +306,8 @@ struct ContentView: View {
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering)
                               .transition(.opacity)
+                      } else if playerBarShown {
+                          PlayerMiniBar(notchWidth: vm.closedNotchSize.width, notchHeight: vm.effectiveClosedNotchHeight)
                       } else if agentBarShown {
                           agentCompactBar()
                       } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music) && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed {

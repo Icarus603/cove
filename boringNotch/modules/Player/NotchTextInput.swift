@@ -1,0 +1,162 @@
+//
+//  NotchTextInput.swift
+//  boringNotch
+//
+//  Typing inside the notch. The notch window can never become the key window (that is what keeps it from stealing focus),
+//  so a text field placed in it cannot receive keystrokes. Instead the field in the notch is a look-alike: clicking it
+//  opens a small panel exactly over it that can take the keyboard without activating the app, as Spotlight does, and what
+//  is typed is passed back as it changes. The notch is kept open while the panel is up.
+//
+
+import AppKit
+import SwiftUI
+
+/// Holds the NSView a SwiftUI field sits on, so its place on screen can be worked out when it is clicked.
+final class AnchorBox {
+    weak var view: NSView?
+
+    var screenRect: NSRect? {
+        guard let view, let window = view.window else { return nil }
+        return window.convertToScreen(view.convert(view.bounds, to: nil))
+    }
+}
+
+private struct AnchorView: NSViewRepresentable {
+    let box: AnchorBox
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        box.view = view
+        return view
+    }
+    func updateNSView(_ view: NSView, context: Context) { box.view = view }
+}
+
+/// A field that looks like a text field in the notch and types through `NotchTextInputController`.
+struct NotchTextField: View {
+    @Binding var text: String
+    var placeholder: LocalizedStringKey
+    var symbol: String? = "magnifyingglass"
+    var onCommit: (() -> Void)? = nil
+
+    @State private var box = AnchorBox()
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if let symbol { Image(systemName: symbol).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary) }
+            Group {
+                if text.isEmpty { Text(placeholder).foregroundStyle(.secondary) } else { Text(text).foregroundStyle(.white) }
+            }
+            .font(.system(size: 11))
+            .lineLimit(1)
+            Spacer(minLength: 0)
+            if !text.isEmpty {
+                Button { text = "" } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 11)).foregroundStyle(.secondary) }
+                    .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 24)
+        .background(AnchorView(box: box))
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.white.opacity(0.1)))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard let rect = box.screenRect else { return }
+            NotchTextInputController.shared.begin(over: rect, text: text, placeholder: placeholder, symbol: symbol,
+                                                  onChange: { text = $0 }, onCommit: { onCommit?() })
+        }
+    }
+}
+
+@MainActor
+final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
+    static let shared = NotchTextInputController()
+
+    private final class Panel: NSPanel {
+        override var canBecomeKey: Bool { true }
+    }
+
+    private var panel: Panel?
+    /// For tests, which send key events to the panel directly.
+    var debugPanel: NSPanel? { panel }
+    private var field: NSTextField?
+    private var onChange: ((String) -> Void)?
+    private var onCommit: (() -> Void)?
+    private var holdsInteraction = false
+
+    func begin(over rect: NSRect, text: String, placeholder: LocalizedStringKey, symbol: String?,
+               onChange: @escaping (String) -> Void, onCommit: @escaping () -> Void) {
+        end(commit: false)
+        self.onChange = onChange
+        self.onCommit = onCommit
+
+        let panel = Panel(contentRect: rect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isFloatingPanel = true
+        panel.level = .mainMenu + 5
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.delegate = self
+
+        let background = NSView(frame: NSRect(origin: .zero, size: rect.size))
+        background.wantsLayer = true
+        background.layer?.cornerRadius = 7
+        background.layer?.backgroundColor = NSColor(white: 0.2, alpha: 1).cgColor
+        background.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        background.layer?.borderWidth = 1
+
+        let field = NSTextField(frame: NSRect(x: 8, y: (rect.height - 18) / 2, width: rect.width - 16, height: 18))
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.textColor = .white
+        field.font = .systemFont(ofSize: 11)
+        field.placeholderString = nil
+        field.stringValue = text
+        field.delegate = self
+        field.cell?.isScrollable = true
+        field.cell?.lineBreakMode = .byClipping
+        background.addSubview(field)
+        panel.contentView = background
+
+        self.panel = panel
+        self.field = field
+        SharingStateManager.shared.beginInteraction()
+        holdsInteraction = true
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(field)
+        field.currentEditor()?.selectedRange = NSRange(location: field.stringValue.count, length: 0)
+    }
+
+    /// Closes the panel. `commit` is true for Return, false for Escape or when it lost the keyboard.
+    func end(commit: Bool) {
+        guard let panel else { return }
+        let commitHandler = onCommit
+        self.panel = nil; self.field = nil; self.onChange = nil; self.onCommit = nil
+        panel.delegate = nil
+        panel.orderOut(nil)
+        if holdsInteraction { holdsInteraction = false; SharingStateManager.shared.endInteraction() }
+        if commit { commitHandler?() }
+    }
+
+    // MARK: NSTextFieldDelegate
+
+    func controlTextDidChange(_ notification: Notification) {
+        onChange?(field?.stringValue ?? "")
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        if selector == #selector(NSResponder.insertNewline(_:)) { end(commit: true); return true }
+        if selector == #selector(NSResponder.cancelOperation(_:)) { onChange?(""); end(commit: false); return true }
+        return false
+    }
+
+    // MARK: NSWindowDelegate
+
+    func windowDidResignKey(_ notification: Notification) {
+        // A click elsewhere ends typing, keeping what was typed.
+        end(commit: false)
+    }
+}

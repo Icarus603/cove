@@ -26,6 +26,7 @@ enum AppModules {
         let registry = ModuleRegistry(disabledIDs: disabled)
         registry.register(HomeModule())
         registry.register(ShelfModule())
+        registry.register(PlayerModule())
         registry.register(MarketsModule())
         registry.register(agents)
         return registry

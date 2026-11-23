@@ -216,7 +216,9 @@ class BoringViewModel: NSObject, ObservableObject {
         // The mascot beside the closed notch is the Agents tab's live activity, like the album art is
         // Home's: opening the notch from it lands on that tab. An explicit choice (a request that needs
         // you, a file dragged onto the shelf) has already moved off Home and is left alone.
-        if notchState == .closed, coordinator.currentView == .home,
+        if notchState == .closed, coordinator.currentView == .home, PlayerMiniState.shared.visible, !AppModules.agents.isCompactBarBusy {
+            coordinator.currentView = NotchViews(id: PlayerModule.moduleID)
+        } else if notchState == .closed, coordinator.currentView == .home,
            AppModules.agentBarShown(
                musicActive: MusicManager.shared.isPlaying || !MusicManager.shared.isPlayerIdle,
                musicLiveActivityEnabled: coordinator.musicLiveActivityEnabled)

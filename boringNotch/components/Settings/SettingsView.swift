@@ -36,6 +36,7 @@ struct SettingsView: View {
             ("HUD", "HUDs", "dial.medium.fill"),
             ("Battery", "Battery", "battery.100.bolt"),
             ("Shelf", "Shelf", "books.vertical"),
+            ("Player", "Player", "play.rectangle"),
             ("Markets", "Markets", "chart.line.uptrend.xyaxis"),
         ]),
         ("Agents", [
@@ -109,6 +110,8 @@ struct SettingsView: View {
                     Charge()
                 case "Shelf":
                     Shelf()
+                case "Player":
+                    PlayerSettings()
                 case "Markets":
                     MarketsSettings()
                 case "Shortcuts":
