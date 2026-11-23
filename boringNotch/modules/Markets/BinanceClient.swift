@@ -112,20 +112,53 @@ enum BinanceClient {
         return (try? await get(components.url!)) != nil
     }
 
+    /// Combined stream for the board: a 1 s mini-ticker (24h figures) plus every trade as it happens per pair. (The aggregated
+    /// trade stream merges fills and is several times slower.)
     static func streamURL(for symbols: [String]) -> URL? {
         guard !symbols.isEmpty else { return nil }
-        let streams = symbols.map { $0.lowercased() + "@miniTicker" }.joined(separator: "/")
+        let streams = symbols.flatMap { [$0.lowercased() + "@miniTicker", $0.lowercased() + "@trade"] }.joined(separator: "/")
         return URL(string: streamBase + "/stream?streams=" + streams)
     }
 
-    /// One frame of the combined stream, or nil when it is not a mini-ticker.
-    static func parseStreamMessage(_ text: String) -> MarketTicker? {
+    /// One frame of a combined stream.
+    enum StreamEvent {
+        case mini(MarketTicker)
+        case trade(symbol: String, price: Double, quantity: Double, time: Date)
+        case kline(Candle, eventTime: Date)
+        case depth(DepthDiff)
+    }
+
+    static func parseStreamEvent(_ text: String) -> StreamEvent? {
         guard let data = text.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let body = root["data"] as? [String: Any],
-              let symbol = body["s"] as? String, let price = number(body["c"]) else { return nil }
-        return MarketTicker(symbol: symbol, price: price, open: number(body["o"]) ?? price, high: number(body["h"]) ?? price,
-                            low: number(body["l"]) ?? price, quoteVolume: number(body["q"]) ?? 0)
+              let body = root["data"] as? [String: Any], let kind = body["e"] as? String else { return nil }
+        func date(_ value: Any?) -> Date? { (value as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) } }
+        switch kind {
+        case "24hrMiniTicker":
+            guard let symbol = body["s"] as? String, let price = number(body["c"]) else { return nil }
+            return .mini(MarketTicker(symbol: symbol, price: price, open: number(body["o"]) ?? price, high: number(body["h"]) ?? price,
+                                      low: number(body["l"]) ?? price, quoteVolume: number(body["q"]) ?? 0))
+        case "trade":
+            guard let symbol = body["s"] as? String, let price = number(body["p"]), let quantity = number(body["q"]),
+                  let time = date(body["T"]) else { return nil }
+            return .trade(symbol: symbol, price: price, quantity: quantity, time: time)
+        case "kline":
+            guard let k = body["k"] as? [String: Any], let opened = date(k["t"]), let open = number(k["o"]), let high = number(k["h"]),
+                  let low = number(k["l"]), let close = number(k["c"]), let volume = number(k["v"]) else { return nil }
+            let candle = Candle(openTime: opened, open: open, high: high, low: low, close: close, volume: volume, takerBuyVolume: number(k["V"]) ?? 0)
+            return .kline(candle, eventTime: date(body["E"]) ?? Date())
+        case "depthUpdate":
+            guard let first = (body["U"] as? NSNumber)?.intValue, let last = (body["u"] as? NSNumber)?.intValue else { return nil }
+            func levels(_ key: String) -> [BookLevel] {
+                (body[key] as? [[Any]] ?? []).compactMap { row in
+                    guard row.count > 1, let price = number(row[0]), let quantity = number(row[1]) else { return nil }
+                    return BookLevel(price: price, quantity: quantity)
+                }
+            }
+            return .depth(DepthDiff(first: first, last: last, bids: levels("b"), asks: levels("a")))
+        default:
+            return nil
+        }
     }
 
     // MARK: Account (optional, read-only)

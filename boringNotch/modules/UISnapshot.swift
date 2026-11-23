@@ -132,6 +132,19 @@ enum UISnapshot {
                     await sleep(2)
                     MarketDetailStore.shared.open(symbol)
                     await sleep(2)
+                    // COVE_SHOT_SAMPLE=<seconds>: count how often the on-screen price and the open candle really change.
+                    if let seconds = Double(env["COVE_SHOT_SAMPLE"] ?? "") {
+                        var lastClose: Double?, lastPrice: Double?, lastBid: Double?, lastShare: Double?, candleChanges = 0, priceChanges = 0, bidChanges = 0, shareChanges = 0
+                        let end = Date().addingTimeInterval(seconds)
+                        while Date() < end {
+                            if let close = MarketDetailStore.shared.candles.last?.close, close != lastClose { if lastClose != nil { candleChanges += 1 }; lastClose = close }
+                            if let price = MarketsStore.shared.tickers[symbol]?.price, price != lastPrice { if lastPrice != nil { priceChanges += 1 }; lastPrice = price }
+                            if let bid = MarketDetailStore.shared.book?.bids.first?.price, bid != lastBid { if lastBid != nil { bidChanges += 1 }; lastBid = bid }
+                            if let share = MarketDetailStore.shared.book?.bidShare(), share != lastShare { if lastShare != nil { shareChanges += 1 }; lastShare = share }
+                            await sleep(0.02)
+                        }
+                        try? "candle close changed \(candleChanges)x, board price changed \(priceChanges)x, best bid changed \(bidChanges)x, order-book imbalance changed \(shareChanges)x in \(Int(seconds)) s\n".write(toFile: dir + "/sample.txt", atomically: true, encoding: .utf8)
+                    }
                 }
                 await sleep(5)
                 capture(["-R0,0,\(Int(screen.frame.width)),420"], "notch-open")

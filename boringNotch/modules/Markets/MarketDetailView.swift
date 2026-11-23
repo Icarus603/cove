@@ -244,6 +244,8 @@ struct MarketDetailView: View {
                         Text(String(format: "%.0f%%", (1 - share) * 100)).foregroundStyle(down)
                     }
                     .font(.system(size: 9, design: .monospaced))
+                    row("Bid", book.bids.first.map { MarketsFormat.price($0.price) }, tint: up)
+                    row("Ask", book.asks.first.map { MarketsFormat.price($0.price) }, tint: down)
                     if let spread = book.spread { row("Spread", MarketsFormat.spread(spread)) }
                 }
             }

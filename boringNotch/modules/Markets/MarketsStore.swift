@@ -38,6 +38,10 @@ final class MarketsStore: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var portfolioTask: Task<Void, Never>?
     private var socket: URLSessionWebSocketTask?
+    /// Ticks arrive faster than the screen needs: they are collected here and published at most every 100 ms.
+    private var pending: [String: MarketTicker] = [:]
+    private var lastTrade: [String: Double] = [:]
+    private var flushTask: Task<Void, Never>?
 
     private init() {
         let saved = UserDefaults.standard.stringArray(forKey: Self.watchlistKey)
@@ -56,7 +60,8 @@ final class MarketsStore: ObservableObject {
     func stop() {
         guard isActive else { return }
         isActive = false
-        streamTask?.cancel(); refreshTask?.cancel(); portfolioTask?.cancel()
+        streamTask?.cancel(); refreshTask?.cancel(); portfolioTask?.cancel(); flushTask?.cancel(); flushTask = nil
+        pending.removeAll(); lastTrade.removeAll()
         socket?.cancel(with: .goingAway, reason: nil)
         streamTask = nil; refreshTask = nil; portfolioTask = nil; socket = nil
         status = .idle
@@ -143,11 +148,26 @@ final class MarketsStore: ObservableObject {
             do {
                 while !Task.isCancelled {
                     let message = try await task.receive()
-                    if case .string(let text) = message, let ticker = BinanceClient.parseStreamMessage(text) {
-                        tickers[ticker.symbol] = ticker
-                        if status != .live { status = .live }
-                        backoff = 1
+                    guard case .string(let text) = message, let event = BinanceClient.parseStreamEvent(text) else { continue }
+                    switch event {
+                    case .mini(var ticker):
+                        // The snapshot can be up to a second behind the trades already seen.
+                        if let price = lastTrade[ticker.symbol] {
+                            ticker.price = price
+                            ticker.high = max(ticker.high, price); ticker.low = min(ticker.low, price)
+                        }
+                        pending[ticker.symbol] = ticker
+                    case .trade(let symbol, let price, _, _):
+                        lastTrade[symbol] = price
+                        guard var ticker = pending[symbol] ?? tickers[symbol] else { continue }
+                        ticker.price = price
+                        ticker.high = max(ticker.high, price); ticker.low = min(ticker.low, price)
+                        pending[symbol] = ticker
+                    case .kline, .depth:
+                        continue
                     }
+                    scheduleFlush()
+                    backoff = 1
                 }
             } catch {
                 if Task.isCancelled { return }
@@ -155,6 +175,18 @@ final class MarketsStore: ObservableObject {
                 try? await Task.sleep(nanoseconds: backoff * 1_000_000_000)
                 backoff = min(backoff * 2, 30)
             }
+        }
+    }
+
+    private func scheduleFlush() {
+        guard flushTask == nil else { return }
+        flushTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.tickers.merge(self.pending) { _, new in new }
+            self.pending.removeAll()
+            self.flushTask = nil
+            if self.status != .live { self.status = .live }
         }
     }
 

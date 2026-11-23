@@ -12,7 +12,7 @@ OUT="${OUT:-$PWD/build/shots}"
 rm -rf "$OUT"; mkdir -p "$OUT"
 xcodebuild -project boringNotch.xcodeproj -scheme boringNotch -configuration Debug -derivedDataPath .build/xcode \
   build CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "error: |\*\* BUILD" || true
-env COVE_SHOT_DIR="$OUT" ${COVE_SHOT_NOTCH_TAB:+COVE_SHOT_NOTCH_TAB=$COVE_SHOT_NOTCH_TAB} ${COVE_SHOT_SCENARIO:+COVE_SHOT_SCENARIO=$COVE_SHOT_SCENARIO} ${COVE_SHOT_MARKET_DETAIL:+COVE_SHOT_MARKET_DETAIL=$COVE_SHOT_MARKET_DETAIL} ${COVE_SHOT_CHART_STEPS:+COVE_SHOT_CHART_STEPS=$COVE_SHOT_CHART_STEPS} ${1:+COVE_SHOT_TABS=$1} .build/xcode/Build/Products/Debug/Cove.app/Contents/MacOS/Cove >/dev/null 2>&1 &
+env COVE_SHOT_DIR="$OUT" ${COVE_SHOT_NOTCH_TAB:+COVE_SHOT_NOTCH_TAB=$COVE_SHOT_NOTCH_TAB} ${COVE_SHOT_SCENARIO:+COVE_SHOT_SCENARIO=$COVE_SHOT_SCENARIO} ${COVE_SHOT_MARKET_DETAIL:+COVE_SHOT_MARKET_DETAIL=$COVE_SHOT_MARKET_DETAIL} ${COVE_SHOT_CHART_STEPS:+COVE_SHOT_CHART_STEPS=$COVE_SHOT_CHART_STEPS} ${COVE_SHOT_SAMPLE:+COVE_SHOT_SAMPLE=$COVE_SHOT_SAMPLE} ${1:+COVE_SHOT_TABS=$1} .build/xcode/Build/Products/Debug/Cove.app/Contents/MacOS/Cove >/dev/null 2>&1 &
 PID=$!
 for _ in {1..90}; do [[ -f "$OUT/DONE" ]] && break; sleep 1; done
 kill $PID 2>/dev/null || true

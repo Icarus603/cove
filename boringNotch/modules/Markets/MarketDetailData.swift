@@ -52,6 +52,44 @@ struct OrderBook: Equatable {
     }
 }
 
+/// One `depthUpdate` frame: level changes covering update ids `first...last`; a quantity of 0 removes the level.
+struct DepthDiff {
+    var first: Int
+    var last: Int
+    var bids: [BookLevel]
+    var asks: [BookLevel]
+}
+
+/// The order book kept locally the way Binance documents it: a REST snapshot, then every depth diff applied in order.
+/// A diff that does not follow on from the last one means the book is stale and has to be fetched again.
+struct LocalOrderBook {
+    private(set) var lastUpdateId: Int
+    private var bids: [Double: Double] = [:]
+    private var asks: [Double: Double] = [:]
+
+    init(lastUpdateId: Int, bids: [BookLevel], asks: [BookLevel]) {
+        self.lastUpdateId = lastUpdateId
+        bids.forEach { self.bids[$0.price] = $0.quantity }
+        asks.forEach { self.asks[$0.price] = $0.quantity }
+    }
+
+    mutating func apply(_ diff: DepthDiff) {
+        for level in diff.bids { bids[level.price] = level.quantity > 0 ? level.quantity : nil }
+        for level in diff.asks { asks[level.price] = level.quantity > 0 ? level.quantity : nil }
+        lastUpdateId = diff.last
+    }
+
+    /// Sorted best-first, within 1% of the middle so levels left far behind do not pile up.
+    func snapshot() -> OrderBook {
+        guard let bestBid = bids.keys.max(), let bestAsk = asks.keys.min() else { return OrderBook(bids: [], asks: []) }
+        let mid = (bestBid + bestAsk) / 2
+        let band = mid * 0.01
+        return OrderBook(
+            bids: bids.filter { $0.key >= mid - band }.sorted { $0.key > $1.key }.map { BookLevel(price: $0.key, quantity: $0.value) },
+            asks: asks.filter { $0.key <= mid + band }.sorted { $0.key < $1.key }.map { BookLevel(price: $0.key, quantity: $0.value) })
+    }
+}
+
 struct DerivativesStats: Equatable {
     var markPrice: Double?
     /// Per funding interval, e.g. 0.0001 = 0.01%.
@@ -71,6 +109,17 @@ struct DerivativesStats: Equatable {
 enum CandleInterval: String, CaseIterable, Identifiable {
     case m5 = "5m", m15 = "15m", h1 = "1h", h4 = "4h", d1 = "1d", w1 = "1w"
     var id: String { rawValue }
+
+    var seconds: TimeInterval {
+        switch self {
+        case .m5: return 300
+        case .m15: return 900
+        case .h1: return 3600
+        case .h4: return 14_400
+        case .d1: return 86_400
+        case .w1: return 604_800
+        }
+    }
 }
 
 extension BinanceClient {
@@ -92,18 +141,20 @@ extension BinanceClient {
         }
     }
 
-    static func orderBook(_ symbol: String, depth: Int = 500) async throws -> OrderBook {
+    /// REST snapshot the local book starts from.
+    static func orderBookSnapshot(_ symbol: String, depth: Int = 1000) async throws -> LocalOrderBook {
         var components = URLComponents(string: publicBase + "/api/v3/depth")!
         components.queryItems = [URLQueryItem(name: "symbol", value: symbol), URLQueryItem(name: "limit", value: String(depth))]
         let data = try await fetch(components.url!)
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw BinanceError.badResponse }
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = (root["lastUpdateId"] as? NSNumber)?.intValue else { throw BinanceError.badResponse }
         func levels(_ key: String) -> [BookLevel] {
             (root[key] as? [[Any]] ?? []).compactMap { row in
                 guard row.count > 1, let price = parse(row[0]), let quantity = parse(row[1]) else { return nil }
                 return BookLevel(price: price, quantity: quantity)
             }
         }
-        return OrderBook(bids: levels("bids"), asks: levels("asks"))
+        return LocalOrderBook(lastUpdateId: id, bids: levels("bids"), asks: levels("asks"))
     }
 
     /// Futures statistics for a USDT or USDC pair; nil when the pair has no perpetual or the endpoint is not
@@ -129,18 +180,10 @@ extension BinanceClient {
 
     // MARK: Streams
 
-    static func klineStreamURL(symbol: String, interval: CandleInterval) -> URL? {
-        URL(string: streamBase + "/ws/" + symbol.lowercased() + "@kline_" + interval.rawValue)
-    }
-
-    static func parseKlineMessage(_ text: String) -> Candle? {
-        guard let data = text.data(using: .utf8),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let k = root["k"] as? [String: Any],
-              let time = (k["t"] as? NSNumber)?.doubleValue, let open = parse(k["o"]), let high = parse(k["h"]),
-              let low = parse(k["l"]), let close = parse(k["c"]), let volume = parse(k["v"]) else { return nil }
-        return Candle(openTime: Date(timeIntervalSince1970: time / 1000), open: open, high: high, low: low, close: close,
-                      volume: volume, takerBuyVolume: parse(k["V"]) ?? 0)
+    /// Candles, every trade and the order book's 100 ms diffs for the open pair, in one combined stream.
+    static func detailStreamURL(symbol: String, interval: CandleInterval) -> URL? {
+        let name = symbol.lowercased()
+        return URL(string: streamBase + "/stream?streams=" + name + "@kline_" + interval.rawValue + "/" + name + "@trade/" + name + "@depth@100ms")
     }
 
     // MARK: Plumbing
