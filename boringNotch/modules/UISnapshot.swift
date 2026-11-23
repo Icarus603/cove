@@ -712,6 +712,35 @@ enum UISnapshot {
         }
         check("the notch is released afterwards", !SharingStateManager.shared.preventNotchClose)
 
+        // A click on another window (the notch cannot take the keyboard, so the panel never "loses" it) ends typing too.
+        let other = NSWindow(contentRect: NSRect(x: -20_000, y: -20_000, width: 100, height: 100), styleMask: [.borderless], backing: .buffered, defer: false)
+        other.isReleasedWhenClosed = false
+        other.orderFront(nil)
+        for scenario in ["a click on another window", "a click inside the panel stays open"] {
+            typed = ""
+            controller.begin(over: rect, text: "", placeholder: "Search", symbol: nil, onChange: { typed = $0 }, onCommit: { committed += 1 })
+            await sleep(0.3)
+            let inside = scenario.contains("inside")
+            let target = inside ? (controller.debugPanel?.windowNumber ?? 0) : other.windowNumber
+            if let click = NSEvent.mouseEvent(with: .leftMouseDown, location: NSPoint(x: 5, y: 5), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: target, context: nil, eventNumber: 1, clickCount: 1, pressure: 1) {
+                NSApp.sendEvent(click)
+            }
+            await sleep(0.2)
+            check(inside ? "a click inside the panel keeps it open" : "a click on another window closes the panel", (controller.debugPanel == nil) == !inside, scenario)
+            controller.end(commit: false)
+        }
+        other.close()
+        // The field leaving the screen (tab switch, notch closing) closes its panel, and only its own.
+        let owner = AnchorBox(), stranger = AnchorBox()
+        controller.begin(over: rect, text: "", placeholder: "Search", symbol: nil, onChange: { _ in }, onCommit: {}, anchor: owner)
+        await sleep(0.3)
+        controller.end(ifAnchoredTo: stranger)
+        check("another field disappearing leaves the panel alone", controller.debugPanel != nil)
+        controller.end(ifAnchoredTo: owner)
+        check("its own field disappearing closes the panel", controller.debugPanel == nil)
+        check("the notch is released after those too", !SharingStateManager.shared.preventNotchClose)
+
         // Real keyboard events through the system's event machinery, addressed to this process only.
         typed = ""
         controller.begin(over: rect, text: "", placeholder: "Search", symbol: nil, onChange: { typed = $0 }, onCommit: { committed += 1 })
@@ -902,6 +931,10 @@ enum UISnapshot {
     }
 
     /// One pass over the new screens for a human to look at: captures only, no input sent anywhere. Run once.
+    private static func windowShotOffscreen<V: View>(_ root: V, size: CGSize, name: String, dir: String) async {
+        await render(root, size: size, name: name, dir: dir, settle: 0.6)
+    }
+
     static func importReportShots(playerFixtures: URL, photoFixtures: URL, dir: String) async {
         let player = await PlayerLibrary.shared.importURLs([playerFixtures])
         let photos = await PhotoLibrary.shared.importURLs([photoFixtures])
@@ -917,8 +950,6 @@ enum UISnapshot {
         await render(ImportReportBar(report: photos.report) {}.padding(14).frame(width: 600), size: CGSize(width: 600, height: 70), name: "report-2-window-bar", dir: dir)
         await render(ImportReportView(report: player.report) {}, size: CGSize(width: 620, height: 460), name: "report-3-player-window", dir: dir)
         await render(ImportReportView(report: photos.report) {}, size: CGSize(width: 620, height: 560), name: "report-4-photo-window", dir: dir)
-        // Sidebars are drawn by AppKit table views, which an off-screen bitmap snapshot leaves blank: the window server's own
-        // capture of the (off-screen) window shows them.
         func windowShot<V: View>(_ root: V, name: String) async {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 560), styleMask: [.titled, .closable, .resizable],
                                   backing: .buffered, defer: false)
@@ -933,6 +964,16 @@ enum UISnapshot {
             try? p.run(); p.waitUntilExit()
             window.close()
         }
+        // The mini player with a video playing: the video itself in the corner.
+        if let clip = PlayerLibrary.shared.items.first(where: { $0.kind == .video }) {
+            PlayerEngine.shared.volume = 0
+            PlayerEngine.shared.play(ids: [clip.id], start: clip.id, resume: false)
+            await sleep(1.5)
+            await windowShot(PlayerMiniBar(notchWidth: 190, notchHeight: 32).padding(8).background(Color.black).frame(width: 330, height: 50), name: "report-7-minibar-video")
+            PlayerEngine.shared.stop()
+        }
+        // Sidebars are drawn by AppKit table views, which an off-screen bitmap snapshot leaves blank: the window server's own
+        // capture of the (off-screen) window shows them.
         await windowShot(PlayerManagerView(), name: "report-5-manager")
         await windowShot(PhotoWindowView(), name: "report-6-photos")
         try? lines.joined(separator: "\n").write(toFile: dir + "/report.txt", atomically: true, encoding: .utf8)

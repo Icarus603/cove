@@ -62,8 +62,10 @@ struct NotchTextField: View {
         .onTapGesture {
             guard let rect = box.screenRect else { return }
             NotchTextInputController.shared.begin(over: rect, text: text, placeholder: placeholder, symbol: symbol,
-                                                  onChange: { text = $0 }, onCommit: { onCommit?() })
+                                                  onChange: { text = $0 }, onCommit: { onCommit?() }, anchor: box)
         }
+        // Switching tab or closing the notch removes the field; the typing panel must go with it.
+        .onDisappear { NotchTextInputController.shared.end(ifAnchoredTo: box) }
     }
 }
 
@@ -82,10 +84,13 @@ final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDel
     private var onChange: ((String) -> Void)?
     private var onCommit: (() -> Void)?
     private var holdsInteraction = false
+    private weak var anchor: AnchorBox?
+    private var monitors: [Any] = []
 
     func begin(over rect: NSRect, text: String, placeholder: LocalizedStringKey, symbol: String?,
-               onChange: @escaping (String) -> Void, onCommit: @escaping () -> Void) {
+               onChange: @escaping (String) -> Void, onCommit: @escaping () -> Void, anchor: AnchorBox? = nil) {
         end(commit: false)
+        self.anchor = anchor
         self.onChange = onChange
         self.onCommit = onCommit
 
@@ -130,6 +135,7 @@ final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDel
         holdsInteraction = true
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
+        installMonitors()
         if let editor = field.currentEditor() as? NSTextView {
             editor.insertionPointColor = .white
             editor.selectedTextAttributes = [.backgroundColor: NSColor.white.withAlphaComponent(0.28), .foregroundColor: NSColor.white]
@@ -144,8 +150,34 @@ final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDel
         self.panel = nil; self.field = nil; self.onChange = nil; self.onCommit = nil
         panel.delegate = nil
         panel.orderOut(nil)
+        removeMonitors()
+        anchor = nil
         if holdsInteraction { holdsInteraction = false; SharingStateManager.shared.endInteraction() }
         if commit { commitHandler?() }
+    }
+
+    /// Ends typing if the panel belongs to this field (which has just left the screen).
+    func end(ifAnchoredTo box: AnchorBox) {
+        if anchor === box { end(commit: false) }
+    }
+
+    /// The panel never loses the keyboard when the notch (which cannot take it) or another app is clicked, so a click
+    /// anywhere outside the panel is what ends typing.
+    private func installMonitors() {
+        removeMonitors()
+        let kinds: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: kinds, handler: { [weak self] _ in
+            Task { @MainActor in self?.end(commit: false) }
+        }) { monitors.append(global) }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: kinds, handler: { [weak self] event in
+            if let self, let panel = self.panel, event.window !== panel { self.end(commit: false) }
+            return event
+        }) { monitors.append(local) }
+    }
+
+    private func removeMonitors() {
+        monitors.forEach { NSEvent.removeMonitor($0) }
+        monitors = []
     }
 
     // MARK: NSTextFieldDelegate

@@ -116,12 +116,17 @@ struct PlayerMiniBar: View {
 
     @ViewBuilder
     private var cover: some View {
-        // Music shows its cover. A video shows an icon: one frame cut down to 30 pt and cropped square reads as a random patch of colour.
-        if let item = engine.current, item.kind == .audio, let image = library.artwork(for: item) {
+        // Music shows its cover. A video shows the video itself, shrunk to the corner and still playing (the whole frame, not a
+        // cropped square: a still cut down to 30 pt reads as a random patch of colour, but moving picture is recognisable).
+        if let item = engine.current, item.kind == .video {
+            VideoSurface(player: engine.player, gravity: .resizeAspect)
+                .allowsHitTesting(false)
+                .clipShape(RoundedRectangle(cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed))
+        } else if let item = engine.current, item.kind == .audio, let image = library.artwork(for: item) {
             Image(nsImage: image).resizable().scaledToFill().clipShape(RoundedRectangle(cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed))
         } else {
             RoundedRectangle(cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed).fill(Color.white.opacity(0.18))
-                .overlay { Image(systemName: engine.current?.kind == .video ? "film" : "music.note").font(.system(size: max(side * 0.5, 6))).foregroundStyle(.white.opacity(0.8)) }
+                .overlay { Image(systemName: "music.note").font(.system(size: max(side * 0.5, 6))).foregroundStyle(.white.opacity(0.8)) }
         }
     }
 }
