@@ -16,17 +16,13 @@ APP="$OUT/Build/Products/Release/Cove.app"
 DMG="build/Cove.dmg"
 
 rm -rf "$OUT" "$DMG"
+# Let Xcode sign everything (helpers, Sparkle's XPC services, the app) so entitlements and nesting come out right.
+SIGN_ARGS=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= CODE_SIGN_IDENTITY="$IDENTITY")
+[[ "$IDENTITY" != "-" ]] && SIGN_ARGS+=(ENABLE_HARDENED_RUNTIME=YES OTHER_CODE_SIGN_FLAGS="--timestamp")
 xcodebuild -project boringNotch.xcodeproj -scheme boringNotch -configuration Release \
-  -derivedDataPath "$OUT" CODE_SIGNING_ALLOWED=NO build | tail -3
-
-# Sign inside-out: helpers first, then the app, with the hardened runtime when a real identity is used.
-FLAGS=(--force --timestamp=none)
-[[ "$IDENTITY" != "-" ]] && FLAGS=(--force --timestamp --options runtime)
-find "$APP/Contents" \( -name "*.xpc" -o -name "*.dylib" -o -path "*/Helpers/*" -o -name "*.framework" \) -print0 \
-  | xargs -0 -I{} codesign "${FLAGS[@]}" --sign "$IDENTITY" {} 2>/dev/null || true
-codesign "${FLAGS[@]}" --sign "$IDENTITY" --entitlements boringNotch/boringNotch.entitlements "$APP" 2>/dev/null \
-  || codesign "${FLAGS[@]}" --sign "$IDENTITY" "$APP"
-codesign --verify --deep --strict "$APP" && echo "signature ok ($IDENTITY)"
+  -derivedDataPath "$OUT" "${SIGN_ARGS[@]}" build | tail -3
+codesign --verify --deep --strict "$APP"
+echo "signature ok ($IDENTITY)"
 
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"

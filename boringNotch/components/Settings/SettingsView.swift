@@ -872,6 +872,8 @@ struct About: View {
                     Text("Version info")
                 }
 
+                UpdaterSettingsView(updater: updaterController.updater)
+
                 HStack(spacing: 30) {
                     Spacer(minLength: 0)
                     Button {
@@ -894,7 +896,7 @@ struct About: View {
             }
             VStack(spacing: 0) {
                 Divider()
-                Text("Built on open source: Boring.Notch (GPL-3.0), CodeIsland, NotchGames and NotchBasket (MIT).")
+                Text("Built on open source: Boring.Notch (GPL-3.0), CodeIsland and NotchBasket (MIT).")
                     .foregroundStyle(.secondary)
                     .padding(.top, 5)
                     .padding(.bottom, 7)
@@ -908,6 +910,7 @@ struct About: View {
             //                openWindow(id: "onboarding")
             //            }
             //            .controlSize(.extraLarge)
+            CheckForUpdatesView(updater: updaterController.updater)
         }
         .navigationTitle("About")
     }

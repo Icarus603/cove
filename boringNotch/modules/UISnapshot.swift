@@ -253,7 +253,6 @@ enum UISnapshot {
         AgentRuntime.shared.debugReset()
     }
 }
-#endif
 
 private extension String {
     func appendLine(to path: String) throws {
@@ -262,3 +261,4 @@ private extension String {
         else { try write(to: url, atomically: true, encoding: .utf8) }
     }
 }
+#endif
