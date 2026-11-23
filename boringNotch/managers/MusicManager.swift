@@ -48,6 +48,7 @@ class MusicManager: ObservableObject {
     @Published var volumeControlSupported: Bool = true
     @ObservedObject var coordinator = BoringViewCoordinator.shared
     @Published var usingAppIconForArtwork: Bool = false
+    private var siteIconTask: Task<Void, Never>?
     @Published var currentLyrics: String = ""
     @Published var isFetchingLyrics: Bool = false
     @Published var syncedLyrics: [(time: Double, text: String)] = []
@@ -208,18 +209,35 @@ class MusicManager: ObservableObject {
         if hasContentChange {
             self.triggerFlipAnimation()
 
-            if artworkChanged, let artwork = state.artwork {
+            // A browser or web app with no real cover gives the system its own logo as artwork; that counts as none,
+            // so the playing app's icon (a web app's own icon is the site's) is shown instead.
+            let artworkIsBrowserLogo = state.artwork.map { WebsiteIconProvider.isBrowserLogo($0, bundleID: state.bundleIdentifier) } ?? false
+            if artworkChanged, let artwork = state.artwork, !artworkIsBrowserLogo {
                 self.updateArtwork(artwork)
-            } else if state.artwork == nil {
+            } else if state.artwork == nil || artworkIsBrowserLogo {
                 // Try to use app icon if no artwork but track changed
                 if let appIconImage = AppIconAsNSImage(for: state.bundleIdentifier) {
                     self.usingAppIconForArtwork = true
                     self.updateAlbumArt(newAlbumArt: appIconImage)
+                    // A browser playing a web page: show that site's own icon instead of the browser's.
+                    self.siteIconTask?.cancel()
+                    let bundle = state.bundleIdentifier
+                    if WebsiteIconProvider.isBrowser(bundle) {
+                        let title = state.title
+                        self.siteIconTask = Task { [weak self] in
+                            guard let icon = await WebsiteIconProvider.icon(browserBundleID: bundle, playingTitle: title),
+                                  !Task.isCancelled else { return }
+                            await MainActor.run {
+                                guard let self, self.usingAppIconForArtwork, self.lastArtworkTitle == title else { return }
+                                self.updateAlbumArt(newAlbumArt: icon)
+                            }
+                        }
+                    }
                 }
             }
             self.artworkData = state.artwork
 
-            if artworkChanged || state.artwork == nil {
+            if artworkChanged || state.artwork == nil || artworkIsBrowserLogo {
                 // Update last artwork change values
                 self.lastArtworkTitle = state.title
                 self.lastArtworkArtist = state.artist
