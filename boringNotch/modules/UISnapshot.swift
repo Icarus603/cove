@@ -1009,17 +1009,6 @@ enum UISnapshot {
         var newer = MediaItem(path: "/x/new.mp3", bookmark: nil, title: "new", artist: "", album: "", duration: 60, kind: .audio)
         newer.addedAt = Date(timeIntervalSince1970: 1_000_000 + 86_400)
         check("a newer batch is still listed before an older one", PlayerLibrary.recentlyAddedOrder(stamped + [older, newer]).map(\.title).prefix(1) == ["new"] && PlayerLibrary.recentlyAddedOrder(stamped + [older, newer]).last?.title == "old")
-        // ---- selecting several rows (Shift and Command)
-        let rowIDs = (0..<10).map { _ in UUID() }
-        let pick = PlayerUI.selection(afterClicking:in:current:anchor:shift:command:)
-        check("a plain click selects only that row", pick(rowIDs[3], rowIDs, [rowIDs[1], rowIDs[2]], rowIDs[1], false, false) == [rowIDs[3]])
-        check("Command adds a row", pick(rowIDs[5], rowIDs, [rowIDs[3]], rowIDs[3], false, true) == [rowIDs[3], rowIDs[5]])
-        check("Command on a selected row takes it out", pick(rowIDs[3], rowIDs, [rowIDs[3], rowIDs[5]], rowIDs[3], false, true) == [rowIDs[5]])
-        check("Shift selects the range from the anchor, downwards", pick(rowIDs[6], rowIDs, [rowIDs[2]], rowIDs[2], true, false) == Set(rowIDs[2...6]))
-        check("Shift selects the range from the anchor, upwards", pick(rowIDs[1], rowIDs, [rowIDs[4]], rowIDs[4], true, false) == Set(rowIDs[1...4]))
-        check("Shift replaces an earlier range", pick(rowIDs[8], rowIDs, Set(rowIDs[2...6]), rowIDs[2], true, false) == Set(rowIDs[2...8]))
-        check("Shift with Command adds the range to what is selected", pick(rowIDs[9], rowIDs, [rowIDs[0], rowIDs[5]], rowIDs[5], true, true) == Set([rowIDs[0]] + Array(rowIDs[5...9])))
-        check("Shift without an anchor acts like a plain click", pick(rowIDs[4], rowIDs, [], nil, true, false) == [rowIDs[4]])
         // ---- arranging a playlist
         let backwards = intoLib.createPlaylist(named: "Backwards", with: natural.reversed())
         intoLib.arrange(backwards.id, .fileName)

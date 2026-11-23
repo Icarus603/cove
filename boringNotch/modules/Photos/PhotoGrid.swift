@@ -12,6 +12,8 @@ struct PhotoCell: View {
     let id: Int64
     let size: CGFloat
     var isSelected = false
+    /// The wall is in selection mode: every photo shows whether it is chosen.
+    var selecting = false
     @ObservedObject private var library = PhotoLibrary.shared
     @State private var photo: Photo?
     @State private var image: NSImage?
@@ -43,6 +45,8 @@ struct PhotoCell: View {
             if isSelected {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 16)).symbolRenderingMode(.palette)
                     .foregroundStyle(.white, Color.effectiveAccent).padding(4)
+            } else if selecting {
+                Image(systemName: "circle").font(.system(size: 16)).foregroundStyle(.white.opacity(0.9)).shadow(color: .black.opacity(0.5), radius: 1.5).padding(4)
             }
         }
         .contentShape(Rectangle())
@@ -71,11 +75,15 @@ struct PhotoGridView: View {
             ScrollView {
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(cell), spacing: spacing), count: columns), spacing: spacing) {
                     ForEach(model.ids, id: \.self) { id in
-                        PhotoCell(id: id, size: cell, isSelected: model.selection.contains(id))
-                            .onTapGesture(count: 2) { model.open(id) }
+                        PhotoCell(id: id, size: cell, isSelected: model.selection.contains(id), selecting: model.isSelecting)
+                            // One click shows the photo; while choosing photos (the Select button) it chooses or un-chooses it, and Shift
+                            // chooses a range.
                             .onTapGesture {
-                                let flags = NSEvent.modifierFlags
-                                model.click(id, command: flags.contains(.command), shift: flags.contains(.shift))
+                                if model.isSelecting {
+                                    model.click(id, command: !NSEvent.modifierFlags.contains(.shift), shift: NSEvent.modifierFlags.contains(.shift))
+                                } else {
+                                    model.open(id)
+                                }
                             }
                             .draggable(dragString(for: id))
                             // In an album with its own order, a photo dropped on another goes in front of it.
@@ -92,7 +100,7 @@ struct PhotoGridView: View {
                 }
                 .padding(.horizontal, inset).padding(.vertical, 12)
             }
-            // A click on empty space clears the selection.
+            // A click on empty space clears the selection (the mode stays until Done).
             .background(Color.clear.contentShape(Rectangle()).onTapGesture { model.clearSelection() })
         }
     }

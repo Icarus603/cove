@@ -175,14 +175,11 @@ private struct LibraryPane: View {
     var body: some View {
         VStack(spacing: 6) {
             searchRow
-            if let pid = ui.pickingFor { pickerHeader(pid) } else if let id = confirmingDelete, let list = library.playlists.first(where: { $0.id == id }) { deleteRow(list) } else if ui.naming != nil { namingRow } else if !ui.selection.isEmpty && !ui.showQueue { selectionBar } else { chipRow }
+            if let pid = ui.pickingFor { pickerHeader(pid) } else if let id = confirmingDelete, let list = library.playlists.first(where: { $0.id == id }) { deleteRow(list) } else if ui.naming != nil { namingRow } else { chipRow }
             if let progress = library.importProgress { importRow(progress) }
             content
             if let summary = library.lastSummary { ImportReportBar(report: summary.report, compact: true) { library.lastSummary = nil } }
         }
-        .onChange(of: ui.filter) { _, _ in ui.pruneSelection() }
-        .onChange(of: ui.search) { _, _ in ui.pruneSelection() }
-        .onChange(of: library.items.count) { _, _ in ui.pruneSelection() }
     }
 
     // MARK: Toolbar
@@ -342,48 +339,6 @@ private struct LibraryPane: View {
         case .duration: return "Longest first"
         case .recentlyPlayed: return "Recently played"
         }
-    }
-
-    /// What can be done with the rows selected with Shift and Command, in the place of the filter chips while any are selected.
-    private var selectionBar: some View {
-        let items = ui.visibleItems
-        let ids = ui.selectedInOrder(items)
-        return HStack(spacing: 6) {
-            Text("\(ids.count) selected").font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.9)).fixedSize()
-            Menu {
-                Button { namingText = ""; ui.naming = .new(items: ids) } label: { Label("New playlist…", systemImage: "plus") }
-                if !library.playlists.isEmpty { Divider() }
-                ForEach(library.playlists) { playlist in
-                    if ui.filter != .playlist(playlist.id) {
-                        Button(playlist.name) { library.add(ids, toPlaylist: playlist.id); ui.clearSelection() }
-                    }
-                }
-            } label: {
-                Label("Add to playlist", systemImage: "play.square.stack")
-                    .font(.system(size: 10, weight: .semibold)).padding(.horizontal, 10).frame(height: 22)
-                    .background(Capsule().fill(Color.white.opacity(0.92))).foregroundStyle(Color.black)
-            }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-            if case .playlist(let id) = ui.filter {
-                selectionButton("Remove from playlist", "minus.circle") { library.remove(Set(ids), fromPlaylist: id); ui.clearSelection() }
-            }
-            selectionButton("Add to queue", "text.append") { ids.forEach { PlayerEngine.shared.enqueue($0) }; ui.clearSelection() }
-            Spacer(minLength: 0)
-            if ids.count < items.count { selectionButton("Select all", nil) { ui.selectAllVisible() } }
-            PlayerIconButton(symbol: "xmark.circle.fill", size: 12, help: "Clear selection") { ui.clearSelection() }
-        }
-        .frame(height: 24)
-    }
-
-    private func selectionButton(_ title: LocalizedStringKey, _ symbol: String?, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Group {
-                if let symbol { Label(title, systemImage: symbol) } else { Text(title) }
-            }
-            .font(.system(size: 10, weight: .semibold)).padding(.horizontal, 9).frame(height: 22)
-            .background(Capsule().fill(Color.white.opacity(0.12))).foregroundStyle(Color.white.opacity(0.9))
-        }
-        .buttonStyle(.plain)
     }
 
     /// Asked in the row itself (a system dialog does not belong in the notch). The media in the playlist stay in the library.
@@ -558,7 +513,6 @@ private struct LibraryRow: View {
 
     private var isCurrent: Bool { now.currentID == item.id }
     private var isMissing: Bool { library.missing.contains(item.id) }
-    private var isSelected: Bool { ui.selection.contains(item.id) }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -593,7 +547,7 @@ private struct LibraryRow: View {
         }
         .padding(.horizontal, 6).padding(.vertical, 3)
         .frame(height: 34)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(isSelected ? Color.effectiveAccent.opacity(0.30) : (isCurrent ? Color.effectiveAccent.opacity(0.16) : (hovering ? Color.white.opacity(0.07) : .clear))))
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(isCurrent ? Color.effectiveAccent.opacity(0.16) : (hovering ? Color.white.opacity(0.07) : .clear)))
         .overlay(alignment: .bottomLeading) {
             if item.progress > 0.01, item.progress < 0.99 {
                 GeometryReader { geo in
@@ -603,12 +557,8 @@ private struct LibraryRow: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture(count: 2) { ui.play(item, in: items) }
-        // One click selects; Shift extends from the last click to here, Command adds or removes just this row.
-        .onTapGesture {
-            let flags = NSEvent.modifierFlags
-            ui.click(item.id, in: items, shift: flags.contains(.shift), command: flags.contains(.command))
-        }
+        // One click plays. Choosing several rows is for the library window (Manage Library…), not for this list.
+        .onTapGesture { ui.play(item, in: items) }
         .contextMenu { RowMenu(item: item, items: items) }
     }
 }
@@ -650,30 +600,22 @@ private struct RowMenu: View {
     @ObservedObject private var library = PlayerLibrary.shared
     @ObservedObject private var ui = PlayerUI.shared
 
-    /// Everything selected when this row is one of several selected rows; otherwise just this row.
-    private var targets: [UUID] {
-        ui.selection.count > 1 && ui.selection.contains(item.id) ? ui.selectedInOrder(items) : [item.id]
-    }
-
     var body: some View {
-        let many = targets.count > 1
         Button { ui.play(item, in: items) } label: { Label("Play", systemImage: "play.fill") }
-        if !many { Button { PlayerEngine.shared.playNext(item.id) } label: { Label("Play next", systemImage: "text.insert") } }
-        Button { targets.forEach { PlayerEngine.shared.enqueue($0) } } label: { Label("Add to queue", systemImage: "text.append") }
+        Button { PlayerEngine.shared.playNext(item.id) } label: { Label("Play next", systemImage: "text.insert") }
+        Button { PlayerEngine.shared.enqueue(item.id) } label: { Label("Add to queue", systemImage: "text.append") }
         Divider()
         Menu {
-            Button { ui.naming = .new(items: targets) } label: { Label("New playlist…", systemImage: "plus") }
+            Button { ui.naming = .new(items: [item.id]) } label: { Label("New playlist…", systemImage: "plus") }
             if !library.playlists.isEmpty { Divider() }
             ForEach(library.playlists) { playlist in
-                Button(playlist.name) { library.add(targets, toPlaylist: playlist.id); if many { ui.clearSelection() } }
+                Button(playlist.name) { library.add([item.id], toPlaylist: playlist.id) }
             }
-        } label: { Label(many ? "Add \(targets.count) to playlist" : "Add to playlist", systemImage: "play.square.stack") }
+        } label: { Label("Add to playlist", systemImage: "play.square.stack") }
         if case .playlist(let id) = ui.filter {
-            if !many {
-                Button { ui.moveInPlaylist(item.id, by: -1) } label: { Label("Move up", systemImage: "arrow.up") }
-                Button { ui.moveInPlaylist(item.id, by: 1) } label: { Label("Move down", systemImage: "arrow.down") }
-            }
-            Button { library.remove(Set(targets), fromPlaylist: id); ui.clearSelection() } label: { Label("Remove from playlist", systemImage: "minus.circle") }
+            Button { ui.moveInPlaylist(item.id, by: -1) } label: { Label("Move up", systemImage: "arrow.up") }
+            Button { ui.moveInPlaylist(item.id, by: 1) } label: { Label("Move down", systemImage: "arrow.down") }
+            Button { library.remove([item.id], fromPlaylist: id) } label: { Label("Remove from playlist", systemImage: "minus.circle") }
         }
         Divider()
         if library.missing.contains(item.id) {
@@ -681,7 +623,7 @@ private struct RowMenu: View {
         } else {
             Button { ui.reveal(item) } label: { Label("Show in Finder", systemImage: "folder") }
         }
-        if !many { Button(role: .destructive) { library.remove([item.id]) } label: { Label("Remove from library", systemImage: "trash") } }
+        Button(role: .destructive) { library.remove([item.id]) } label: { Label("Remove from library", systemImage: "trash") }
     }
 }
 
@@ -723,7 +665,7 @@ private struct QueueList: View {
                             .padding(.horizontal, 6).frame(height: 30)
                             .background(RoundedRectangle(cornerRadius: 7).fill(now.currentID == item.id ? Color.effectiveAccent.opacity(0.16) : .clear))
                             .contentShape(Rectangle())
-                            .onTapGesture(count: 2) { engine.playFromQueue(item.id) }
+                            .onTapGesture { engine.playFromQueue(item.id) }
                             .contextMenu {
                                 Button { engine.playFromQueue(item.id) } label: { Label("Play", systemImage: "play.fill") }
                                 Button(role: .destructive) { engine.removeFromQueue(item.id) } label: { Label("Remove from queue", systemImage: "minus.circle") }

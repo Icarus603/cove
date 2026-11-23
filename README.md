@@ -62,13 +62,13 @@ Requires **macOS 14 or later**. Built for Apple Silicon.
 
 1. Open the **Player** tab and press **＋ Add**. Choose files or whole folders (subfolders are included). Cove reads tags and
    cover art for you.
-2. **Double-click** a title to play it. Use the **⋯** that appears on a row for Play next, Add to queue, Add to playlist,
+2. **Click** a title to play it. Use the **⋯** that appears on a row for Play next, Add to queue, Add to playlist,
    Show in Finder and more.
-3. Filter with **All / Audio / Video**, search at the top, and sort with the ⇅ menu.
-4. **Make a playlist.** Choose **Playlists → New playlist…**, name it, then press **＋** on what to put in. Or, in the
+3. Filter with **All / Audio / Video**; your playlists follow in the same row, and the row slides sideways when there are many. Search at the top, sort with the ⇅ menu.
+4. **Make a playlist.** Press **＋ Playlists** at the right of the row, name it, then press **＋** on what to put in. Or, in the
    Add dialog, pick **Also put in playlist** so new files go straight into one.
-5. **Select many at once:** click, **Shift**-click for a range, **Command**-click for single rows. A bar appears with
-   *Add to playlist*, *Add to queue* and *Select all*.
+5. **Many at once** is for the library window (see 8): select there with a click, **Shift** for a range, **Command** for single
+   rows. The list in the notch is for playing: one click plays.
 6. **Put a playlist in order:** the ⇅ menu inside a playlist sorts it by file name, by title or backwards; the **⋯** on a
    row moves it up or down.
 7. **Video** plays in the notch. Double-click it, press **F**, or use the button to go full screen; pop it out into its
@@ -84,12 +84,13 @@ Requires **macOS 14 or later**. Built for Apple Silicon.
 1. Open the **Photos** tab and press **＋ Add**. Choose photos or folders. In the dialog, **Also put in album** files them
    into an existing album, or a new one you name, as they come in.
 2. The tab shows a quick-look strip. Press **Open Photos** for the large window.
-3. **Show your albums** with the sidebar button at the left of the toolbar. Make one with **New Album**, or select photos and
-   use **Add to album**. Select with a click, **Shift** for a range, **Command** for single photos, or **Select All**.
+3. **Your albums** are in the sidebar. Make one with **New Album**, or select photos and
+   use **Add to album**. Press **Select** to choose photos (click each, **Shift** for a range, or **Select All**) and **Done** when finished; outside that mode a click opens the photo.
 4. **Arrange an album by hand.** Inside an album, drag a photo in front of another, or select photos and choose
    **Arrange → Move to the start / earlier / later / to the end**. New photos go to the end. The ⇅ menu can switch to date, name
    or recently added instead.
-5. **Double-click** a photo to open it as a plain big picture. Move the mouse to bring up the few controls.
+5. **Click** a photo to open it as a plain big picture. Move the mouse to bring up the few controls. There is no close button,
+   to keep the picture clean: press **Esc** to go back to the wall (if you have zoomed in, the first press zooms out).
 
 | In the viewer | |
 | --- | --- |
@@ -144,8 +145,8 @@ Plugins → Add plugin…** (or drop its folder into `~/Library/Application Supp
 
 - **Formats:** mp3, m4a, aac, flac, wav, aiff, caf, mp4, m4v and mov, played by the system's media engine.
 - **Library:** files or whole folders; tags and cover art read for you; search, filter, sort; resumes where each file was left.
-- **Playlists:** arrange by hand, by file name or by title; add straight into one from the Add dialog; multi-select with Shift
-  and Command.
+- **Playlists:** arrange by hand, by file name or by title; add straight into one from the Add dialog; select many in the library
+  window.
 - **Playing:** shuffle, repeat, speed, volume, audio and subtitle tracks, an up-next queue.
 - **Video:** in the notch, in a resizable pop-out window, or full screen, with controls that fade.
 - **Mini player:** a small cover (or the live video) beside the closed notch while something plays.

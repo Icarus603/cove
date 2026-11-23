@@ -23,6 +23,8 @@ final class PhotoBrowserModel: ObservableObject {
     @Published var thumbSize: Double { didSet { UserDefaults.standard.set(thumbSize, forKey: Self.sizeKey) } }
     @Published private(set) var ids: [Int64] = []
     @Published var selection: Set<Int64> = []
+    /// Choosing photos is a state of its own, entered with the Select button: outside it a click opens the photo.
+    @Published var isSelecting = false
     /// The photo open in the viewer, if any.
     @Published var viewing: Int64?
     /// The photo being edited (always the one open in the viewer, which stays underneath), if any.
@@ -131,8 +133,9 @@ final class PhotoBrowserModel: ObservableObject {
         }
     }
 
-    func selectAll() { selection = Set(ids) }
+    func selectAll() { isSelecting = true; selection = Set(ids) }
     func clearSelection() { selection = [] }
+    func endSelecting() { isSelecting = false; selection = []; anchor = nil }
 
     /// What an action applies to: the selection, or the one photo it was started on when that is not selected.
     func targets(for id: Int64?) -> [Int64] {

@@ -42,6 +42,8 @@ final class PhotoNotchModel: ObservableObject {
 struct PhotoNotchView: View {
     @ObservedObject private var library = PhotoLibrary.shared
     @ObservedObject private var model = PhotoNotchModel.shared
+    @State private var naming = false
+    @State private var nameText = ""
 
     var body: some View {
         ZStack {
@@ -63,14 +65,34 @@ struct PhotoNotchView: View {
 
     // MARK: Header
 
+    @ViewBuilder
     private var header: some View {
+        if naming { namingRow } else { chipRow }
+    }
+
+    private var namingRow: some View {
+        HStack(spacing: 6) {
+            NotchTextField(text: $nameText, placeholder: "Album name", symbol: "rectangle.stack", onCommit: { commitNewAlbum() })
+            Button("Save") { commitNewAlbum() }.controlSize(.small).disabled(nameText.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Cancel") { naming = false }.controlSize(.small)
+        }
+        .frame(height: 26)
+    }
+
+    private func commitNewAlbum() {
+        let name = nameText
+        naming = false
+        Task { if let album = await PhotoLibrary.shared.createAlbum(named: name) { model.scope = .album(album.id) } }
+    }
+
+    private var chipRow: some View {
         HStack(spacing: 6) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 5) {
-                        chip(String(localized: "All Photos"), count: library.photoCount, selected: model.scope == .all) { model.scope = .all }.id(Int64(-1))
+                        chip(String(localized: "All Photos"), selected: model.scope == .all) { model.scope = .all }.id(Int64(-1))
                         ForEach(library.albums) { album in
-                            chip(album.name, count: album.count, selected: model.scope == .album(album.id)) { model.scope = .album(album.id) }.id(album.id)
+                            chip(album.name, selected: model.scope == .album(album.id)) { model.scope = .album(album.id) }.id(album.id)
                         }
                     }
                 }
@@ -79,6 +101,19 @@ struct PhotoNotchView: View {
                 .onChange(of: library.albums.count) { _, _ in scrollToSelected(proxy, animated: false) }
                 .onChange(of: model.scope) { _, _ in scrollToSelected(proxy, animated: true) }
             }
+            // A plus with the word beside it, as in the Player tab, so what it makes is plain without waiting for a tooltip.
+            Button { nameText = ""; naming = true } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "plus").font(.system(size: 9, weight: .bold))
+                    Text("Albums")
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 10).frame(height: 24)
+                .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
+                .foregroundStyle(Color.white.opacity(0.85))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain).help(Text("New album…"))
             Button { PhotoActions.chooseFilesToAdd() } label: {
                 Label("Add", systemImage: "plus")
                     .font(.system(size: 11, weight: .semibold))
@@ -105,11 +140,10 @@ struct PhotoNotchView: View {
         if animated { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .center) } } else { proxy.scrollTo(id, anchor: .center) }
     }
 
-    private func chip(_ title: String, count: Int, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Text(title).lineLimit(1)
-                Text("\(count)").foregroundStyle(selected ? Color.black.opacity(0.55) : Color.secondary)
             }
             .font(.system(size: 11, weight: .semibold))
             .padding(.horizontal, 10).frame(height: 24)

@@ -78,7 +78,6 @@ final class PlayerUI: ObservableObject {
         }
     }
     @Published var search = "" { didSet { if search != oldValue { recomputeVisibleItems() } } }
-    @Published var selection: Set<UUID> = []
     @Published var naming: Naming?
     /// The playlist songs are being chosen for: the library list shows a + on every row until Done.
     @Published var pickingFor: UUID?
@@ -222,52 +221,6 @@ final class PlayerUI: ObservableObject {
         if let id = pickingFor, !library.playlists.contains(where: { $0.id == id }) { pickingFor = nil }
     }
 
-    // MARK: Selecting several
-
-    /// Where a Shift-click range starts: the last row clicked without Shift.
-    private(set) var selectionAnchor: UUID?
-
-    /// A click on a row. Plain: only this row. Command: this row joins or leaves the selection. Shift: everything from the
-    /// last plain click to here (added to the selection when Command is held too).
-    func click(_ id: UUID, in items: [MediaItem], shift: Bool, command: Bool) {
-        selection = Self.selection(afterClicking: id, in: items.map(\.id), current: selection, anchor: selectionAnchor, shift: shift, command: command)
-        if !shift { selectionAnchor = id }
-        if selectionAnchor == nil { selectionAnchor = id }
-    }
-
-    /// The rule on its own, so it can be tested without any view.
-    static func selection(afterClicking id: UUID, in order: [UUID], current: Set<UUID>, anchor: UUID?, shift: Bool, command: Bool) -> Set<UUID> {
-        if shift, let anchor, let a = order.firstIndex(of: anchor), let b = order.firstIndex(of: id) {
-            let range = Set(order[min(a, b)...max(a, b)])
-            return command ? current.union(range) : range
-        }
-        if command {
-            var next = current
-            if next.contains(id) { next.remove(id) } else { next.insert(id) }
-            return next
-        }
-        return [id]
-    }
-
-    func selectAllVisible() {
-        selection = Set(visibleItems.map(\.id))
-        selectionAnchor = visibleItems.first?.id
-    }
-
-    func clearSelection() { selection = []; selectionAnchor = nil }
-
-    /// The selected tracks in the order they are listed.
-    func selectedInOrder(_ items: [MediaItem]) -> [UUID] { items.map(\.id).filter { selection.contains($0) } }
-
-    /// Forgets selected tracks that are no longer in the list (another filter, a search, removed from the library).
-    func pruneSelection() {
-        guard !selection.isEmpty else { return }
-        let visible = Set(visibleItems.map(\.id))
-        let kept = selection.intersection(visible)
-        if kept != selection { selection = kept }
-        if kept.isEmpty { selectionAnchor = nil }
-    }
-
     /// Moves one track a place up (-1) or down (+1) inside the playlist being shown.
     func moveInPlaylist(_ itemID: UUID, by offset: Int) {
         guard case .playlist(let id) = filter, let playlist = library.playlists.first(where: { $0.id == id }) else { return }
@@ -348,7 +301,6 @@ final class PlayerUI: ObservableObject {
         case .new(let items):
             let playlist = library.createPlaylist(named: text, with: items)
             filter = .playlist(playlist.id)
-            clearSelection()
             // A new, empty playlist goes straight to choosing what is in it: there is nothing else to do with it.
             if items.isEmpty, !library.items.isEmpty { pickingFor = playlist.id }
         case .rename(let id):

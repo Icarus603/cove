@@ -147,13 +147,7 @@ struct PhotoViewer: View {
                             dragStart = start
                             offset = CGSize(width: start.width + drag.translation.width, height: start.height + drag.translation.height)
                         }
-                        .onEnded { drag in
-                            defer { dragStart = nil }
-                            // At fit size a drag is a swipe to the next or previous photo.
-                            if scale <= 1.01, abs(drag.translation.width) > 80, abs(drag.translation.width) > abs(drag.translation.height) {
-                                model.step(drag.translation.width < 0 ? 1 : -1)
-                            }
-                        })
+                        .onEnded { _ in dragStart = nil })
                 .simultaneousGesture(MagnifyGesture()
                     .onChanged { value in
                         let start = pinchStart ?? scale

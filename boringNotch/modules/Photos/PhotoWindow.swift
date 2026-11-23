@@ -212,7 +212,7 @@ struct PhotoWindowView: View {
             model.selectAll(); return .handled
         }
         .onDeleteCommand { if model.viewing == nil, !model.selection.isEmpty { handleRemove() } }
-        .onExitCommand { if model.viewing == nil { model.clearSelection() } }
+        .onExitCommand { if model.viewing == nil { model.endSelecting() } }
         .confirmationDialog(String(localized: "Remove \(model.selection.count) photos from the library?"), isPresented: $confirmRemove, titleVisibility: .visible) {
             Button("Remove from Library", role: .destructive) { model.removeTargets(model.targets(for: nil)); model.clearSelection() }
             Button("Cancel", role: .cancel) {}
@@ -255,15 +255,23 @@ struct PhotoWindowView: View {
     /// at its right end.
     private var actionBar: some View {
         HStack(alignment: .center, spacing: 8) {
-            ToolbarPillButton(title: model.selection.count == model.ids.count && !model.ids.isEmpty ? "Deselect All" : "Select All") {
-                if model.selection.count == model.ids.count { model.clearSelection() } else { model.selectAll() }
+            if model.isSelecting {
+                ToolbarPillButton(title: "Done", prominent: true) { model.endSelecting() }.fixedSize()
+                ToolbarPillButton(title: model.selection.count == model.ids.count && !model.ids.isEmpty ? "Deselect All" : "Select All") {
+                    if model.selection.count == model.ids.count { model.clearSelection() } else { model.selectAll() }
+                }
+                .fixedSize()
+                .disabled(model.ids.isEmpty)
+                Text(model.selection.isEmpty ? String(localized: "Nothing selected") : String(localized: "\(model.selection.count) of \(model.ids.count) selected"))
+                    .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 8)
+                selectionActions.disabled(model.selection.isEmpty)
+            } else {
+                ToolbarPillButton(title: "Select", symbol: "checkmark.circle") { model.isSelecting = true }
+                    .fixedSize()
+                    .disabled(model.ids.isEmpty)
+                Spacer(minLength: 8)
             }
-            .fixedSize()
-            .disabled(model.ids.isEmpty)
-            Text(model.selection.isEmpty ? String(localized: "Nothing selected") : String(localized: "\(model.selection.count) of \(model.ids.count) selected"))
-                .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-            Spacer(minLength: 8)
-            selectionActions.disabled(model.selection.isEmpty)
             Divider().frame(height: 16)
             HStack(spacing: 5) {
                 Image(systemName: "square.grid.3x3").font(.system(size: 10)).foregroundStyle(.secondary)

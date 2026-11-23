@@ -14,13 +14,38 @@ import SwiftUI
 enum PlayerScope: Hashable {
     case all, music, video, missing
     case playlist(UUID)
+
+    /// The page the library window was last on, so it opens there.
+    private static let key = "player.managerScope"
+    static var saved: PlayerScope {
+        get {
+            switch UserDefaults.standard.string(forKey: key) ?? "all" {
+            case "music": return .music
+            case "video": return .video
+            case "missing": return .missing
+            case let raw where raw.hasPrefix("playlist:"): return UUID(uuidString: String(raw.dropFirst(9))).map(PlayerScope.playlist) ?? .all
+            default: return .all
+            }
+        }
+        set {
+            let raw: String
+            switch newValue {
+            case .all: raw = "all"
+            case .music: raw = "music"
+            case .video: raw = "video"
+            case .missing: raw = "missing"
+            case .playlist(let id): raw = "playlist:" + id.uuidString
+            }
+            UserDefaults.standard.set(raw, forKey: key)
+        }
+    }
 }
 
 @MainActor
 final class PlayerManagerModel: ObservableObject {
     let library: PlayerLibrary
 
-    @Published var scope: PlayerScope = .all { didSet { if oldValue != scope { selection = []; refresh() } } }
+    @Published var scope: PlayerScope = PlayerScope.saved { didSet { if oldValue != scope { PlayerScope.saved = scope; selection = []; refresh() } } }
     @Published var search = "" { didSet { if oldValue != search { refresh() } } }
     @Published var sortOrder: [KeyPathComparator<MediaItem>] = [KeyPathComparator(\.addedAt, order: .reverse)] { didSet { refresh() } }
     @Published var selection: Set<UUID> = []

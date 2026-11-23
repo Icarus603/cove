@@ -104,6 +104,8 @@ struct PlayerManagerView: View {
     }
 
     private func applyPending() {
+        if case .playlist(let id) = model.scope, !library.playlists.contains(where: { $0.id == id }) { model.scope = .all }
+        if model.scope == .missing, library.missing.isEmpty { model.scope = .all }
         if let scope = PlayerManagerWindowController.shared.consumePending() { model.scope = scope }
     }
 
