@@ -91,8 +91,22 @@ final class MarketsStore: ObservableObject {
         tickers[symbol] = nil; sparklines[symbol] = nil
     }
 
-    func move(from: IndexSet, to: Int) {
-        watchlist.move(fromOffsets: from, toOffset: to)
+    /// Adds a symbol that is already known to exist (picked from the search results).
+    func addKnown(_ symbol: String) {
+        guard !watchlist.contains(symbol) else { return }
+        watchlist.append(symbol)
+    }
+
+    func move(_ symbol: String, by offset: Int) {
+        guard let index = watchlist.firstIndex(of: symbol) else { return }
+        let target = index + offset
+        guard watchlist.indices.contains(target) else { return }
+        watchlist.swapAt(index, target)
+    }
+
+    func resetWatchlist() {
+        watchlist = Self.defaultWatchlist
+        tickers = tickers.filter { Self.defaultWatchlist.contains($0.key) }
     }
 
     // MARK: Tasks

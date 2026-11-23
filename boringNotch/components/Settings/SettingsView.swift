@@ -147,7 +147,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 700)
+        // Fills the window: a fixed width left the content as a 700 pt column in the middle of a zoomed or enlarged window.
+        .frame(minWidth: 700, maxWidth: .infinity, minHeight: 480, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
         .tint(.effectiveAccent)
         .id(accentColorUpdateTrigger)

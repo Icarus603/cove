@@ -18,6 +18,7 @@ struct MarketDetailView: View {
     @AppStorage("markets.showBoll") private var showBoll = false
     @AppStorage("markets.subPanel") private var subRaw = SubPanel.volume.rawValue
     @State private var hover: Int?
+    @State private var hoverPoint: CGPoint?
     /// The chart's window onto the candles: how many fit across, and the time of the right-most one (nil follows live).
     @State private var visible = 72
     @State private var anchor: Date?
@@ -25,8 +26,8 @@ struct MarketDetailView: View {
     @State private var panCarry: CGFloat = 0
     @State private var dragStartEnd: Int?
 
-    private var up: Color { redUp ? .red : .green }
-    private var down: Color { redUp ? .green : .red }
+    private var up: Color { MarketsPalette.up(redUp: redUp) }
+    private var down: Color { MarketsPalette.down(redUp: redUp) }
     private var sub: SubPanel { SubPanel(rawValue: subRaw) ?? .volume }
     private var ticker: MarketTicker? { store.tickers[symbol] }
     private var parts: (base: String, quote: String) { BinanceClient.split(symbol) }
@@ -83,7 +84,8 @@ struct MarketDetailView: View {
                     readout
                     CandleChart(candles: detail.candles,
                                 overlays: ChartOverlays(ma: showMA, ema: showEMA, boll: showBoll),
-                                sub: sub, upColor: up, downColor: down, visibleCount: visible, endIndex: endIndex, hoverIndex: $hover)
+                                sub: sub, upColor: up, downColor: down, interval: detail.interval, baseAsset: parts.base,
+                                visibleCount: visible, endIndex: endIndex, hoverIndex: $hover, hoverPoint: $hoverPoint)
                         .background(GeometryReader { geo in
                             Color.clear
                                 .onAppear { chartWidth = geo.size.width }
@@ -107,7 +109,16 @@ struct MarketDetailView: View {
                             if detail.isLoadingOlder { ProgressView().controlSize(.mini).padding(4) }
                         }
                         .overlay {
-                            if detail.candles.isEmpty { ProgressView().controlSize(.small) }
+                            if detail.candles.isEmpty {
+                                if detail.loadFailed {
+                                    VStack(spacing: 6) {
+                                        Text("Could not load the chart.").font(.callout).foregroundStyle(.secondary)
+                                        Button("Retry") { detail.retry() }.controlSize(.small)
+                                    }
+                                } else {
+                                    ProgressView().controlSize(.small)
+                                }
+                            }
                         }
                 }
                 .frame(maxWidth: .infinity)
@@ -123,6 +134,12 @@ struct MarketDetailView: View {
             if let candles = note.userInfo?["pan"] as? Int { setEnd(endIndex - candles) }
             if let factor = note.userInfo?["zoom"] as? Double { zoom(by: CGFloat(factor)) }
             if note.userInfo?["reset"] != nil { resetViewport() }
+            if let fraction = note.userInfo?["hover"] as? Double {
+                let point = CGPoint(x: (chartWidth - ChartModel.axisWidth) * fraction, y: 70)
+                hoverPoint = point
+                let count = detail.candles.count
+                hover = count == 0 ? nil : max(0, min(endIndex, endIndex - Int((1 - fraction) * Double(visible))))
+            }
         }
         #endif
         .onChange(of: detail.interval) { _, _ in resetViewport() }
@@ -213,7 +230,7 @@ struct MarketDetailView: View {
             section("24h") {
                 row("High", ticker.map { MarketsFormat.price($0.high) })
                 row("Low", ticker.map { MarketsFormat.price($0.low) })
-                row("Volume", ticker.map { MarketsFormat.compact($0.quoteVolume) + " " + parts.quote })
+                row("Turnover", ticker.map { MarketsFormat.compact($0.quoteVolume) + " " + parts.quote })
             }
             if let stats = detail.derivatives {
                 section("Futures") {

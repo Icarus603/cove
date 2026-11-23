@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 enum MarketsFormat {
     /// Enough digits to be useful at any magnitude: 67,432.10 / 3.4521 / 0.00001234.
@@ -43,4 +44,14 @@ enum MarketsFormat {
 
     /// Default colour convention: red up in Chinese locales, green up elsewhere.
     static var defaultRedUp: Bool { Locale.current.language.languageCode?.identifier == "zh" }
+}
+
+/// Up and down colours: wine red and forest green, picked to stay readable on the notch's black. Which one means "up"
+/// follows the user's red-up / green-down setting.
+enum MarketsPalette {
+    static let wine = Color(red: 0.70, green: 0.16, blue: 0.28)
+    static let forest = Color(red: 0.17, green: 0.58, blue: 0.31)
+
+    static func up(redUp: Bool) -> Color { redUp ? wine : forest }
+    static func down(redUp: Bool) -> Color { redUp ? forest : wine }
 }

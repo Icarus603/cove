@@ -106,6 +106,15 @@ enum BinanceClient {
         return rows.compactMap { $0.count > 4 ? number($0[4]) : nil }
     }
 
+    /// Every spot symbol with its last price, in one request. Used to search pairs and to show current prices in Settings.
+    static func allPrices() async throws -> [String: Double] {
+        let data = try await get(URL(string: publicBase + "/api/v3/ticker/price")!)
+        guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { throw BinanceError.badResponse }
+        var result: [String: Double] = [:]
+        for row in rows { if let symbol = row["symbol"] as? String, let price = number(row["price"]) { result[symbol] = price } }
+        return result
+    }
+
     static func exists(_ symbol: String) async -> Bool {
         var components = URLComponents(string: publicBase + "/api/v3/ticker/price")!
         components.queryItems = [URLQueryItem(name: "symbol", value: symbol)]

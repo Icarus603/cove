@@ -157,6 +157,7 @@ enum UISnapshot {
                         case "pan": info["pan"] = Int(parts.dropFirst().first ?? "") ?? 0
                         case "zoom": info["zoom"] = Double(parts.dropFirst().first ?? "") ?? 1
                         case "reset": info["reset"] = true
+                        case "hover": info["hover"] = Double(parts.dropFirst().first ?? "") ?? 0.5
                         case "interval": if let raw = parts.dropFirst().first, let value = CandleInterval(rawValue: raw) { MarketDetailStore.shared.setInterval(value) }
                         default: break
                         }
@@ -168,7 +169,38 @@ enum UISnapshot {
                 AppDelegate.current?.closeNotchEverywhere()
                 await sleep(1)
             }
+            // COVE_SHOT_MARKETS_LOGIC=1: exercise the watchlist and search code for real and write the outcome to logic.txt.
+            // The watchlist is put back afterwards.
+            if env["COVE_SHOT_MARKETS_LOGIC"] != nil {
+                var lines: [String] = []
+                let store = MarketsStore.shared, directory = SymbolDirectory.shared
+                let original = store.watchlist
+                await directory.reload()
+                lines.append("directory: \(directory.prices.count) symbols, failed=\(directory.failed)")
+                lines.append("suggestions eth: \(directory.suggestions(for: "eth", excluding: []))")
+                lines.append("suggestions 'btc usdt': \(directory.suggestions(for: "btc usdt", excluding: []))")
+                lines.append("suggestions doge excluding DOGEUSDT: \(directory.suggestions(for: "doge", excluding: ["DOGEUSDT"]))")
+                lines.append("suggestions zzzz: \(directory.suggestions(for: "zzzz", excluding: []))")
+                lines.append("popular excluding defaults: \(directory.popular(excluding: store.watchlist))")
+                store.resetWatchlist(); lines.append("reset: \(store.watchlist)")
+                store.addKnown("XRPUSDT"); store.addKnown("XRPUSDT"); lines.append("addKnown XRP twice: \(store.watchlist)")
+                store.move("XRPUSDT", by: -2); lines.append("move XRP up 2: \(store.watchlist)")
+                store.move("BTCUSDT", by: -1); lines.append("move BTC up at top (no-op): \(store.watchlist)")
+                store.move("XRPUSDT", by: 99); lines.append("move XRP down 99 (no-op): \(store.watchlist)")
+                store.remove("ETHUSDT"); lines.append("remove ETH: \(store.watchlist)")
+                let added = await store.add("sol"); lines.append("add 'sol' (already there): \(String(describing: added)) \(store.watchlist)")
+                let added2 = await store.add("pepe"); lines.append("add 'pepe' (network check): \(String(describing: added2)) \(store.watchlist)")
+                let bad = await store.add("notacoin"); lines.append("add 'notacoin': \(String(describing: bad))")
+                store.watchlist = original; lines.append("restored: \(store.watchlist)")
+                try? lines.joined(separator: "\n").write(toFile: dir + "/logic.txt", atomically: true, encoding: .utf8)
+            }
             SettingsWindowController.shared.showWindow()
+            // COVE_SHOT_WINDOW_SIZE=1400x900: enlarge the settings window first, as the green zoom button would.
+            if let size = env["COVE_SHOT_WINDOW_SIZE"]?.split(separator: "x").compactMap({ Double($0) }), size.count == 2,
+               let window = SettingsWindowController.shared.window {
+                window.setContentSize(NSSize(width: size[0], height: size[1]))
+                window.center()
+            }
             await sleep(1.5)
             let all = ["General", "Appearance", "Modules", "Media", "Calendar", "HUD", "Battery", "Shelf", "Markets", "Agents", "AgentDisplay",
                        "AgentMascots", "AgentSound", "AgentAutomation", "AgentRemote", "AgentBuddy", "AgentHooks", "Shortcuts", "Advanced", "About"]

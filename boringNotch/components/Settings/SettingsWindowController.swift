@@ -54,7 +54,8 @@ class SettingsWindowController: NSWindowController {
         window.isExcludedFromWindowsMenu = false
         
         // Configure window to be a standard document-style window
-        window.isRestorable = true
+        // Position is set explicitly on every open (see `place`); a restored frame is how it ended up at the screen's corner.
+        window.isRestorable = false
         window.identifier = NSUserInterfaceItemIdentifier("BoringNotchSettingsWindow")
         
         // Create the SwiftUI content
@@ -71,36 +72,59 @@ class SettingsWindowController: NSWindowController {
         window.delegate = self
     }
     
+    /// The screen the pointer is on, else the main one.
+    private var targetScreen: NSScreen? {
+        NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main ?? NSScreen.screens.first
+    }
+
+    /// Puts the window in the middle of the target screen's usable area, never taller or wider than it.
+    /// `NSWindow.center()` is not used: right after ordering a window front its `screen` can still be nil, and then
+    /// `center()` does nothing and the window stays at the origin, the bottom-left corner of the screen.
+    private func place() {
+        guard let window, let visible = targetScreen?.visibleFrame else { return }
+        let width = min(window.frame.width, visible.width - 40)
+        let height = min(window.frame.height, visible.height - 40)
+        let frame = NSRect(x: visible.midX - width / 2, y: visible.midY - height / 2 + visible.height * 0.03, width: width, height: height)
+        window.setFrame(frame, display: false)
+    }
+
+    /// True when most of the window is on some screen's usable area.
+    private var isOnScreen: Bool {
+        guard let window else { return false }
+        return NSScreen.screens.contains { screen in
+            let overlap = screen.visibleFrame.intersection(window.frame)
+            return !overlap.isNull && overlap.width * overlap.height > window.frame.width * window.frame.height * 0.6
+        }
+    }
+
     func showWindow() {
         // Set app to regular mode first
         NSApp.setActivationPolicy(.regular)
-        
-        // If window is already visible, bring it to front properly
+
+        // If the window is already up, bring it forward; but one that has ended up off screen is put back first.
         if window?.isVisible == true {
+            if !isOnScreen { place() }
             NSApp.activate(ignoringOtherApps: true)
             window?.orderFrontRegardless()
             window?.makeKeyAndOrderFront(nil)
             return
         }
-        
-        // Show the window with proper ordering
-        // Never taller than the screen it opens on.
-        if let window, let visible = (window.screen ?? NSScreen.main)?.visibleFrame, window.frame.height > visible.height - 40 {
-            window.setContentSize(NSSize(width: window.contentView?.frame.width ?? 700, height: max(480, visible.height - 120)))
-        }
+
+        place()
         window?.orderFrontRegardless()
         window?.makeKeyAndOrderFront(nil)
-        window?.center()
-        
+
         // Activate the app and ensure window gets focus
         NSApp.activate(ignoringOtherApps: true)
-        
-        // Force window to front after activation
+
+        // Force window to front after activation, and check once more where it landed.
         DispatchQueue.main.async { [weak self] in
-            self?.window?.makeKeyAndOrderFront(nil)
+            guard let self else { return }
+            if !self.isOnScreen { self.place() }
+            self.window?.makeKeyAndOrderFront(nil)
         }
     }
-    
+
     override func close() {
         super.close()
         relinquishFocus()

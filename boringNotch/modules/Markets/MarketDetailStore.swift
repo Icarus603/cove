@@ -24,6 +24,8 @@ final class MarketDetailStore: ObservableObject {
     /// True once the futures request has answered, so "not available" is not shown while it is still loading.
     @Published private(set) var derivativesChecked = false
     @Published private(set) var isLoadingOlder = false
+    /// The first load of candles failed (offline, or Binance not reachable from here).
+    @Published private(set) var loadFailed = false
     /// No earlier candles exist (or the memory cap is reached), so panning left stops asking for more.
     private var reachedStart = false
 
@@ -70,6 +72,12 @@ final class MarketDetailStore: ObservableObject {
         close()
     }
 
+    /// Try the first load again after it failed.
+    func retry() {
+        guard let symbol else { return }
+        open(symbol)
+    }
+
     func setInterval(_ value: CandleInterval) {
         guard value != interval else { return }
         interval = value
@@ -81,7 +89,7 @@ final class MarketDetailStore: ObservableObject {
 
     private func reset() {
         candles = []; book = nil; derivatives = nil; derivativesChecked = false
-        reachedStart = false; isLoadingOlder = false; lastTrade = nil; latestLast = nil
+        reachedStart = false; isLoadingOlder = false; loadFailed = false; lastTrade = nil; latestLast = nil
         localBook = nil; bookBuffer = []; isSyncingBook = false
     }
 
@@ -116,6 +124,9 @@ final class MarketDetailStore: ObservableObject {
             if let history = try? await BinanceClient.candles(symbol, interval: interval) {
                 guard !Task.isCancelled else { return }
                 self?.candles = history
+                self?.loadFailed = false
+            } else if !Task.isCancelled {
+                self?.loadFailed = true
             }
             await self?.streamCandles(symbol: symbol, interval: interval)
         }

@@ -100,7 +100,7 @@ private struct MarketCard: View {
     private var change: Double { ticker?.changePercent ?? 0 }
     private var tint: Color {
         if ticker == nil || change == 0 { return .gray }
-        return (change > 0) == redUp ? .red : .green
+        return change > 0 ? MarketsPalette.up(redUp: redUp) : MarketsPalette.down(redUp: redUp)
     }
 
     var body: some View {
