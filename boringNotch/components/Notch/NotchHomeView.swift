@@ -24,6 +24,30 @@ struct MusicPlayerView: View {
     }
 }
 
+/// Cover art drawn in a square without distorting it. Square art fills the square as before; wide art (a YouTube thumbnail, a
+/// video frame) is shown whole, centred, over a blurred, enlarged copy of itself so the square has no empty bars.
+struct SquareArtwork: View {
+    let image: NSImage
+
+    private var isSquare: Bool {
+        guard image.size.width > 0, image.size.height > 0 else { return true }
+        return abs(image.size.width / image.size.height - 1) < 0.04
+    }
+
+    var body: some View {
+        if isSquare {
+            Image(nsImage: image).resizable().aspectRatio(1, contentMode: .fit)
+        } else {
+            ZStack {
+                Image(nsImage: image).resizable().scaledToFill().blur(radius: 10).opacity(0.85)
+                Image(nsImage: image).resizable().scaledToFit()
+            }
+            .aspectRatio(1, contentMode: .fit)
+            .clipped()
+        }
+    }
+}
+
 struct AlbumArtView: View {
     @ObservedObject var musicManager = MusicManager.shared
     @ObservedObject var vm: BoringViewModel
@@ -82,9 +106,7 @@ struct AlbumArtView: View {
                 
 
     private var albumArtImage: some View {
-        Image(nsImage: musicManager.albumArt)
-            .resizable()
-            .aspectRatio(1, contentMode: .fit)
+        SquareArtwork(image: musicManager.albumArt)
             .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
             .clipped()
             .clipShape(

@@ -1007,6 +1007,22 @@ enum UISnapshot {
         }
         await render(PhotoNotchView().frame(width: 600, height: 262).background(Color.black).environment(\.colorScheme, .dark), size: CGSize(width: 600, height: 262), name: "report-8-photos-notch", dir: dir, settle: 1.2)
         await render(PlayerView().frame(width: 600, height: 262).background(Color.black).environment(\.colorScheme, .dark), size: CGSize(width: 600, height: 262), name: "report-9-player-notch", dir: dir, settle: 1.2)
+        do {
+            func art(_ w: CGFloat, _ h: CGFloat) -> NSImage {
+                let image = NSImage(size: NSSize(width: w, height: h))
+                image.lockFocus()
+                NSGradient(colors: [.systemOrange, .systemPink, .systemIndigo])?.draw(in: NSRect(x: 0, y: 0, width: w, height: h), angle: 20)
+                NSColor.white.setStroke(); let box = NSBezierPath(rect: NSRect(x: 4, y: 4, width: w - 8, height: h - 8)); box.lineWidth = 6; box.stroke()
+                image.unlockFocus(); return image
+            }
+            let row = HStack(spacing: 16) {
+                SquareArtwork(image: art(160, 160)).frame(width: 110, height: 110).clipShape(RoundedRectangle(cornerRadius: 12))
+                SquareArtwork(image: art(320, 180)).frame(width: 110, height: 110).clipShape(RoundedRectangle(cornerRadius: 12))
+                SquareArtwork(image: art(180, 320)).frame(width: 110, height: 110).clipShape(RoundedRectangle(cornerRadius: 12))
+                SquareArtwork(image: art(320, 180)).frame(width: 30, height: 30).clipShape(RoundedRectangle(cornerRadius: 5))
+            }.padding(16).background(Color.black)
+            await render(row, size: CGSize(width: 480, height: 142), name: "report-10-square-art", dir: dir, settle: 0.6)
+        }
         // The mini player with a video playing: the video itself in the corner.
         if let clip = PlayerLibrary.shared.items.first(where: { $0.kind == .video }) {
             PlayerEngine.shared.volume = 0

@@ -411,9 +411,7 @@ struct ContentView: View {
     @ViewBuilder
     func MusicLiveActivity() -> some View {
         HStack {
-            Image(nsImage: musicManager.albumArt)
-                .resizable()
-                .clipped()
+            SquareArtwork(image: musicManager.albumArt)
                 .clipShape(
                     RoundedRectangle(
                         cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed)
