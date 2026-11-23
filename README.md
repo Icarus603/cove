@@ -33,7 +33,7 @@ GPL-3.0 (see `LICENSE`). Includes MIT-licensed code from CodeIsland, NotchGames 
 
 ## Install and update
 
-Download `Cove.dmg` from the [latest release](https://github.com/Icarus603/notch-hub/releases/latest), drag Cove to
+Download `Cove.dmg` from the [latest release](https://github.com/Icarus603/cove/releases/latest), drag Cove to
 Applications. The build is signed ad hoc (no Apple Developer ID), so the first time: right-click Cove → Open, or allow it
 in **System Settings → Privacy & Security**. After that Cove updates itself through Sparkle; **About → Check for Updates**
 forces a check.

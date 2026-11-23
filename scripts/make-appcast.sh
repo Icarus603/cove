@@ -7,7 +7,7 @@
 set -euo pipefail
 cd "${0:A:h}/.."
 VERSION="${1:?usage: make-appcast.sh <version>}"
-REPO="${REPO:-Icarus603/notch-hub}"
+REPO="${REPO:-Icarus603/cove}"
 DMG="build/Cove.dmg"
 APP="build/release/Build/Products/Release/Cove.app"
 SIGN="$(find .build/xcode/SourcePackages/artifacts -name sign_update -path '*bin*' | head -1)"
