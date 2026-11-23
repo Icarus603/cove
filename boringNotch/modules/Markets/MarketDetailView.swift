@@ -164,12 +164,7 @@ struct MarketDetailView: View {
                     .foregroundStyle(ticker.changePercent == 0 ? Color.gray : (ticker.changePercent > 0 ? up : down))
             }
             Spacer()
-            Picker("", selection: Binding(get: { detail.interval }, set: { detail.setInterval($0) })) {
-                ForEach(CandleInterval.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 232)
+            IntervalBar(selected: detail.interval) { detail.setInterval($0) }
         }
     }
 
@@ -306,5 +301,39 @@ struct MarketDetailView: View {
             .clipShape(Capsule())
         }
         .frame(height: 4)
+    }
+}
+
+
+/// The interval switch, drawn here rather than with the system segmented control: that control re-measured itself as the view
+/// around it redrew under the moving pointer, so its segments kept growing and shrinking. This one is a fixed-size row.
+private struct IntervalBar: View {
+    let selected: CandleInterval
+    let onSelect: (CandleInterval) -> Void
+    private let width: CGFloat = 232, height: CGFloat = 20
+
+    var body: some View {
+        let all = Array(CandleInterval.allCases)
+        let cell = width / CGFloat(max(all.count, 1))
+        ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.white.opacity(0.08))
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(Color.effectiveAccent.opacity(0.9))
+                .frame(width: cell - 4, height: height - 4)
+                .offset(x: 2 + cell * CGFloat(all.firstIndex(of: selected) ?? 0))
+            HStack(spacing: 0) {
+                ForEach(all) { interval in
+                    Text(interval.rawValue)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(interval == selected ? Color.white : Color.secondary)
+                        .frame(width: cell, height: height)
+                        .contentShape(Rectangle())
+                        .onTapGesture { onSelect(interval) }
+                }
+            }
+        }
+        .frame(width: width, height: height)
+        .fixedSize()
+        .accessibilityElement(children: .contain)
     }
 }
