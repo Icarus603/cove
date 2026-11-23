@@ -13,6 +13,7 @@ import AppKit
 import Combine
 import NotchKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 enum UISnapshot {
@@ -50,7 +51,47 @@ enum UISnapshot {
         }
     }
 
+    /// With COVE_DROP_TEST=<file>[,<file>…] set, drops those files onto the shelf the way a drag would and reports what it kept.
+    static func dropTestIfRequested() {
+        guard let list = ProcessInfo.processInfo.environment["COVE_DROP_TEST"], let out = ProcessInfo.processInfo.environment["COVE_DROP_TEST_OUT"] else { return }
+        Task { @MainActor in
+            await sleep(3)
+            var lines: [String] = []
+            for path in list.split(separator: ",").map(String.init) {
+                let before = ShelfStateViewModel.shared.items.count
+                if path.hasPrefix("pbfile:") || path.hasPrefix("pbpng:") || path.hasPrefix("pbtext:") {
+                    // Through the same pasteboard reader the real drop uses.
+                    let pb = NSPasteboard(name: NSPasteboard.Name("cove.droptest.\(UUID().uuidString)"))
+                    pb.clearContents()
+                    if path.hasPrefix("pbfile:") { pb.writeObjects([URL(fileURLWithPath: String(path.dropFirst(7))) as NSURL]) }
+                    if path.hasPrefix("pbpng:") { pb.setData(try! Data(contentsOf: URL(fileURLWithPath: String(path.dropFirst(6)))), forType: .png) }
+                    if path.hasPrefix("pbtext:") { pb.setString(String(path.dropFirst(7)), forType: .string) }
+                    let providers = await NotchDropHandler.providers(from: pb)
+                    ShelfStateViewModel.shared.load(providers)
+                    await sleep(2.5)
+                    lines.append("\(path.prefix(40)): providers \(providers.count), items \(ShelfStateViewModel.shared.items.count)")
+                    continue
+                }
+                let provider: NSItemProvider
+                if path.hasPrefix("png:") {
+                    // The way a screenshot thumbnail or a web image arrives: image data, no file URL.
+                    let data = try! Data(contentsOf: URL(fileURLWithPath: String(path.dropFirst(4))))
+                    provider = NSItemProvider(item: data as NSData, typeIdentifier: UTType.png.identifier)
+                    provider.suggestedName = "Screenshot test"
+                } else {
+                    provider = NSItemProvider(contentsOf: URL(fileURLWithPath: path))!
+                }
+                ShelfStateViewModel.shared.load([provider])
+                await sleep(2.5)
+                lines.append("\(path): items \(before) -> \(ShelfStateViewModel.shared.items.count)")
+            }
+            try? lines.joined(separator: "\n").write(toFile: out, atomically: true, encoding: .utf8)
+            NSApp.terminate(nil)
+        }
+    }
+
     static func runIfRequested() {
+        dropTestIfRequested()
         reportWindowsIfRequested()
         guard let dir = ProcessInfo.processInfo.environment["COVE_SNAPSHOT_DIR"] else { return }
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)

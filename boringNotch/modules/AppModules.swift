@@ -30,6 +30,11 @@ enum AppModules {
         return registry
     }()
 
+    /// What the notch window itself needs to know about agents: only whether the collapsed bar shows and whether it is busy.
+    /// The window redraws when these flip, not on every agent event; a redraw mid-drag resets the drop targets, so a file
+    /// dragged onto the shelf while an agent was working never landed.
+    static let barState = AgentBarState()
+
     /// Third-party modules: external programs in the plugins folder, each switched on by the user.
     static let plugins: PluginManager = {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -176,4 +181,24 @@ final class ShelfModule: NotchModule {
     let tabOrder = 10
 
     func makeExpandedView() -> AnyView { AnyView(ShelfView()) }
+}
+
+@MainActor
+final class AgentBarState: ObservableObject {
+    @Published private(set) var visible = false
+    @Published private(set) var busy = false
+    private var cancellable: AnyCancellable?
+
+    init() {
+        refresh()
+        cancellable = AppModules.registry.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.refresh() } }
+    }
+
+    private func refresh() {
+        let nowVisible = AppModules.agents.isCompactBarVisible, nowBusy = AppModules.agents.isCompactBarBusy
+        if nowVisible != visible { visible = nowVisible }
+        if nowBusy != busy { busy = nowBusy }
+    }
 }

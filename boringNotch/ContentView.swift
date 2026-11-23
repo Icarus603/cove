@@ -58,13 +58,13 @@ struct ContentView: View {
         )
     }
 
-    @ObservedObject private var moduleRegistry = AppModules.registry
+    @ObservedObject private var agentBar = AppModules.barState
 
     /// CodeIsland's collapsed bar (mascot beside the notch) shows while agents work or wait, and while
     /// nothing else (music) is using the closed notch.
     private var agentBarShown: Bool {
         guard vm.notchState == .closed, !vm.hideOnClosed else { return false }
-        _ = moduleRegistry // redraw when agents change
+        _ = agentBar // redraw when the collapsed bar appears, goes busy or leaves
         return AppModules.agentBarShown(
             musicActive: musicManager.isPlaying || !musicManager.isPlayerIdle,
             musicLiveActivityEnabled: coordinator.musicLiveActivityEnabled
@@ -386,7 +386,9 @@ struct ContentView: View {
                     if let module = AppModules.registry.selected {
                         module.makeExpandedView()
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                            .clipped()
+                            // Clips a tall tab to the notch but leaves a few points around the edge, so the highlighted
+                            // dashed border of the shelf (drawn half outside its frame) is not cut off.
+                            .clipShape(Rectangle().inset(by: -6))
                     }
                 }
                 .environment(\.albumArtNamespace, albumArtNamespace)

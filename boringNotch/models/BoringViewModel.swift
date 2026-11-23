@@ -32,6 +32,9 @@ class BoringViewModel: NSObject, ObservableObject {
 
     @Published var dragDetectorTargeting: Bool = false
     @Published var generalDropTargeting: Bool = false
+    /// The AirDrop zone beside the shelf, set by that view while it is on screen, so a drop onto it can be routed there.
+    weak var airDropZoneView: NSView?
+    var airDropHandler: (([NSItemProvider]) -> Void)?
     @Published var dropZoneTargeting: Bool = false
     @Published var dropEvent: Bool = false
     @Published var anyDropZoneTargeting: Bool = false

@@ -32,6 +32,19 @@ struct FileShareView: View {
                 Task { await handleDrop(providers) }
                 return true
             }
+            .onChange(of: hostView) { _, view in vm.airDropZoneView = view }
+            .onAppear {
+                // The notch host view receives drops itself and hands the ones over this zone to AirDrop.
+                vm.airDropHandler = { providers in
+                    interactionNonce = .init()
+                    vm.dropEvent = true
+                    Task { await handleDrop(providers) }
+                }
+            }
+            .onDisappear {
+                vm.airDropHandler = nil
+                vm.airDropZoneView = nil
+            }
             .onTapGesture {
                 Task {
                     await handleClick()

@@ -275,9 +275,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.disableSkyLight()
         }
 
-        let hosting = NSHostingView(
+        let hosting = NotchHostingView(
             rootView: ContentView()
-                .environmentObject(viewModel)
+                .environmentObject(viewModel),
+            viewModel: viewModel
         )
         // The window keeps the size and top-edge position given here. Left to itself the hosting view resizes the
         // window to the SwiftUI content's limits, which made the notch jump, float below the menu bar or grow off screen.
