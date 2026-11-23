@@ -117,10 +117,15 @@ struct ImportReport: Equatable {
     var added: Int
     var alreadyInLibrary: Int
     var skipped: [SkippedFile]
+    /// The playlist the files were put into as they were added.
+    var playlistName: String? = nil
 
     var isClean: Bool { skipped.isEmpty }
 
     var headline: String {
+        if let playlistName, domain == .media, added + alreadyInLibrary > 0 {
+            return String(localized: "Put \(added + alreadyInLibrary) files in “\(playlistName)”")
+        }
         if added == 0 && alreadyInLibrary > 0 && skipped.isEmpty {
             return String(localized: "Everything was already in the library")
         }
@@ -130,7 +135,7 @@ struct ImportReport: Equatable {
     /// The second half of the line: what did not go in, said without jargon.
     var detail: String? {
         var parts: [String] = []
-        if alreadyInLibrary > 0 && added > 0 { parts.append(String(localized: "\(alreadyInLibrary) were already there")) }
+        if alreadyInLibrary > 0 && added > 0 && playlistName == nil { parts.append(String(localized: "\(alreadyInLibrary) were already there")) }
         if !skipped.isEmpty { parts.append(String(localized: "\(skipped.count) not added")) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }

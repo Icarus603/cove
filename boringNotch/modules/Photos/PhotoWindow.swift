@@ -88,6 +88,7 @@ enum PhotoActions {
         panel.allowedContentTypes = PhotoFormats.contentTypes
         SharingStateManager.shared.beginInteraction()
         NSApp.activate(ignoringOtherApps: true)
+        panel.presentAboveNotch()
         panel.begin { response in
             SharingStateManager.shared.endInteraction()
             guard response == .OK else { return }

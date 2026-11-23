@@ -90,6 +90,7 @@ class QuickShareService: ObservableObject {
         panel.canChooseFiles = true
         panel.title = "Select Files for \(provider.id)"
         panel.message = "Choose files to share via \(provider.id)"
+        panel.presentAboveNotch()
 
         let completion: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             defer {

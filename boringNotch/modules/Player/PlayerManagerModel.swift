@@ -77,7 +77,7 @@ final class PlayerManagerModel: ObservableObject {
     var title: String {
         switch scope {
         case .all: return String(localized: "All Items")
-        case .music: return String(localized: "Music")
+        case .music: return String(localized: "Audio")
         case .video: return String(localized: "Video")
         case .missing: return String(localized: "Missing Files")
         case .playlist(let id): return library.playlists.first { $0.id == id }?.name ?? String(localized: "Playlist")

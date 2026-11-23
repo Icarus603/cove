@@ -200,7 +200,7 @@ private struct LibraryPane: View {
     private var chipRow: some View {
         HStack(spacing: 5) {
             chip("All", count: library.items.count, selected: ui.filter == .all) { ui.filter = .all }
-            chip("Music", count: library.items.filter { $0.kind == .audio }.count, selected: ui.filter == .audio) { ui.filter = .audio }
+            chip("Audio", count: library.items.filter { $0.kind == .audio }.count, selected: ui.filter == .audio) { ui.filter = .audio }
             chip("Video", count: library.items.filter { $0.kind == .video }.count, selected: ui.filter == .video) { ui.filter = .video }
             playlistMenu
             Spacer(minLength: 0)
@@ -251,7 +251,8 @@ private struct LibraryPane: View {
             .background(Capsule().fill(selectedName != nil && !ui.showQueue ? Color.white.opacity(0.92) : Color.white.opacity(0.1)))
             .foregroundStyle(selectedName != nil && !ui.showQueue ? Color.black : Color.white.opacity(0.85))
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        // A borderless menu draws its label in the system font and ignores .font; a plain button style keeps the chip's own type.
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
     }
 
     /// The way into the library window, where bulk work is done.

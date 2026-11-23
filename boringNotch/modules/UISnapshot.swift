@@ -182,6 +182,25 @@ enum UISnapshot {
                 NSApp.terminate(nil)
                 return
             }
+            // COVE_SHOT_ACTIVATION=1: does opening the typing panel activate Cove or change its activation policy?
+            if env["COVE_SHOT_ACTIVATION"] != nil {
+                var log: [String] = ["policy before: \(NSApp.activationPolicy().rawValue) active: \(NSApp.isActive)"]
+                let center = NotificationCenter.default
+                let tokens = [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification, NSWindow.didBecomeKeyNotification, NSWindow.didBecomeMainNotification].map { name in
+                    center.addObserver(forName: name, object: nil, queue: .main) { n in log.append("event \(n.name.rawValue)") }
+                }
+                if let screen = NSScreen.main {
+                    let rect = NSRect(x: screen.frame.midX - 120, y: screen.frame.maxY - 160, width: 240, height: 24)
+                    NotchTextInputController.shared.begin(over: rect, text: "", placeholder: "Search", symbol: nil, onChange: { _ in }, onCommit: {})
+                    await sleep(1)
+                    log.append("policy after: \(NSApp.activationPolicy().rawValue) active: \(NSApp.isActive) key=\(String(describing: NSApp.keyWindow?.className))")
+                    NotchTextInputController.shared.end(commit: false)
+                    await sleep(0.5)
+                    log.append("after end: active: \(NSApp.isActive)")
+                }
+                tokens.forEach { center.removeObserver($0) }
+                try? log.joined(separator: "\n").write(toFile: dir + "/activation.txt", atomically: true, encoding: .utf8)
+            }
             if env["COVE_SHOT_PLAYER_TYPING"] != nil { await playerTypingCheck(dir: dir) }
             if let fixtures = env["COVE_SHOT_PLAYER_UI"] {
                 await playerUIFlow(fixtures: URL(fileURLWithPath: fixtures), dir: dir)
@@ -926,6 +945,28 @@ enum UISnapshot {
         check("no picker is opened when the library is empty", emptyMade != nil && emptyUI.filter == .playlist(emptyMade!.id) && emptyUI.pickingFor == nil,
               "picking=\(String(describing: emptyUI.pickingFor))")
 
+        // ---- adding straight into a playlist
+        let intoDir = work.appendingPathComponent("into")
+        try? fm.copyItem(at: fixtures, to: intoDir)
+        let intoLib = PlayerLibrary(directory: work.appendingPathComponent("into-lib"))
+        var first = await intoLib.importURLs([intoDir])
+        check("an import reports the ids of everything playable it covered", first.itemIDs.count == 7 && Set(first.itemIDs).count == 7, "\(first.itemIDs.count)")
+        let road = intoLib.createPlaylist(named: "Road", with: first.itemIDs)
+        check("a new playlist made from those ids holds all of them, in order", road.itemIDs == first.itemIDs)
+        let again = await intoLib.importURLs([intoDir.appendingPathComponent("song_a.mp3"), intoDir.appendingPathComponent("clip.mp4")])
+        check("files already in the library are still reported, so they can join a playlist", again.added == 0 && again.itemIDs.count == 2, "added=\(again.added) ids=\(again.itemIDs.count)")
+        let otherList = intoLib.createPlaylist(named: "Other")
+        intoLib.add(again.itemIDs, toPlaylist: otherList.id)
+        intoLib.add(again.itemIDs, toPlaylist: otherList.id)
+        check("adding twice does not duplicate", intoLib.playlists.first { $0.id == otherList.id }?.itemIDs.count == 2)
+        var report = again; report.playlistName = "Other"
+        check("the result line names the playlist", report.report.headline.contains("Other") || report.report.headline.contains("「Other」") || report.report.headline.contains("“Other”"), report.report.headline)
+        first = ImportSummary()
+        let chooser = AddToPlaylistChooser(playlists: intoLib.playlists, preselect: otherList.id)
+        if case .existing(let id) = chooser.choice { check("the chooser preselects the playlist being viewed", id == otherList.id) } else { check("the chooser preselects the playlist being viewed", false) }
+        let plain = AddToPlaylistChooser(playlists: intoLib.playlists, preselect: nil)
+        if case .none = plain.choice { check("by default nothing is added to a playlist", true) } else { check("by default nothing is added to a playlist", false) }
+
         lines.append(failures == 0 ? "ALL PASSED" : "\(failures) FAILED")
         try? (lines.joined(separator: "\n") + "\n").write(toFile: dir + "/player_manager.txt", atomically: true, encoding: .utf8)
     }
@@ -964,6 +1005,8 @@ enum UISnapshot {
             try? p.run(); p.waitUntilExit()
             window.close()
         }
+        await render(PhotoNotchView().frame(width: 600, height: 262).background(Color.black).environment(\.colorScheme, .dark), size: CGSize(width: 600, height: 262), name: "report-8-photos-notch", dir: dir, settle: 1.2)
+        await render(PlayerView().frame(width: 600, height: 262).background(Color.black).environment(\.colorScheme, .dark), size: CGSize(width: 600, height: 262), name: "report-9-player-notch", dir: dir, settle: 1.2)
         // The mini player with a video playing: the video itself in the corner.
         if let clip = PlayerLibrary.shared.items.first(where: { $0.kind == .video }) {
             PlayerEngine.shared.volume = 0

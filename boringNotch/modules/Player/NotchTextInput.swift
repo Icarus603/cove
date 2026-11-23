@@ -86,6 +86,7 @@ final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDel
     private var holdsInteraction = false
     private weak var anchor: AnchorBox?
     private var monitors: [Any] = []
+    private var savedPresentation: NSApplication.PresentationOptions?
 
     func begin(over rect: NSRect, text: String, placeholder: LocalizedStringKey, symbol: String?,
                onChange: @escaping (String) -> Void, onCommit: @escaping () -> Void, anchor: AnchorBox? = nil) {
@@ -133,6 +134,12 @@ final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDel
         self.field = field
         SharingStateManager.shared.beginInteraction()
         holdsInteraction = true
+        // Taking the keyboard makes Cove the active app, and over a full-screen app macOS answers by sliding the hidden menu
+        // bar down for an instant. Keeping it hidden for the time the panel is up stops that flash.
+        if !NSMenu.menuBarVisible(), savedPresentation == nil {
+            savedPresentation = NSApp.presentationOptions
+            NSApp.presentationOptions = [.hideDock, .hideMenuBar]
+        }
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
         installMonitors()
@@ -152,6 +159,7 @@ final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDel
         panel.orderOut(nil)
         removeMonitors()
         anchor = nil
+        if let saved = savedPresentation { NSApp.presentationOptions = saved; savedPresentation = nil }
         if holdsInteraction { holdsInteraction = false; SharingStateManager.shared.endInteraction() }
         if commit { commitHandler?() }
     }

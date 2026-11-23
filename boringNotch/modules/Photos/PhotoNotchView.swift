@@ -72,8 +72,12 @@ struct PhotoNotchView: View {
                 }
             }
             Button { PhotoActions.chooseFilesToAdd() } label: {
-                Image(systemName: "plus").font(.system(size: 11, weight: .bold)).frame(width: 24, height: 24)
-                    .background(Circle().fill(Color.white.opacity(0.12)))
+                Label("Add", systemImage: "plus")
+                    .font(.system(size: 11, weight: .semibold))
+                    .padding(.horizontal, 10).frame(height: 24)
+                    .background(Capsule().fill(Color.white.opacity(0.92)))
+                    .foregroundStyle(Color.black)
+                    .contentShape(Capsule())
             }
             .buttonStyle(.plain).help(Text("Add photos or folders"))
             Button { PhotoWindowController.shared.show(scope: model.scope) } label: {
@@ -94,8 +98,8 @@ struct PhotoNotchView: View {
                 Text(title).lineLimit(1)
                 Text("\(count)").foregroundStyle(selected ? Color.black.opacity(0.55) : Color.secondary)
             }
-            .font(.system(size: 10, weight: .semibold))
-            .padding(.horizontal, 9).padding(.vertical, 4)
+            .font(.system(size: 11, weight: .semibold))
+            .padding(.horizontal, 10).frame(height: 24)
             .background(Capsule().fill(selected ? Color.white.opacity(0.92) : Color.white.opacity(0.1)))
             .foregroundStyle(selected ? Color.black : Color.white.opacity(0.85))
         }

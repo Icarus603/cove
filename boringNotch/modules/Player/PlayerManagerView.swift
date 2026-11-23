@@ -115,7 +115,7 @@ struct PlayerManagerView: View {
         List {
             Section("Library") {
                 sidebarRow("All Items", "square.stack", .all)
-                sidebarRow("Music", "music.note", .music)
+                sidebarRow("Audio", "waveform", .music)
                 sidebarRow("Video", "film", .video)
                 if library.missing.count > 0 { sidebarRow("Missing Files", "exclamationmark.triangle", .missing) }
             }

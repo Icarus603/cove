@@ -716,6 +716,7 @@ final class ShelfItemViewModel: ObservableObject {
             popup.target = binder
             popup.action = #selector(PopupBinder.changed(_:))
 
+            panel.presentAboveNotch()
             panel.begin { response in
                 if response == .OK, let appURL = panel.url {
                     Task {
@@ -763,6 +764,7 @@ final class ShelfItemViewModel: ObservableObject {
                     savePanel.prompt = "Rename"
                     savePanel.nameFieldStringValue = fileURL.lastPathComponent
                     savePanel.directoryURL = fileURL.deletingLastPathComponent()
+                    savePanel.presentAboveNotch()
                     savePanel.begin { response in
                         if response == .OK, let newURL = savePanel.url {
                             Task {

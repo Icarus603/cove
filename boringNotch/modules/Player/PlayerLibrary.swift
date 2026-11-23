@@ -172,6 +172,8 @@ final class PlayerLibrary: ObservableObject {
         }
         append(pending)
         summary.added = fresh.count - summary.failed.count
+        let idByPath = Dictionary(items.map { ($0.path, $0.id) }, uniquingKeysWith: { first, _ in first })
+        summary.itemIDs = candidates.compactMap { idByPath[$0.standardizedFileURL.resolvingSymlinksInPath().path] }
         importProgress = nil
         if !summary.isEmpty { lastSummary = summary }
         return summary

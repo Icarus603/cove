@@ -178,13 +178,35 @@ final class PlayerUI: ObservableObject {
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowedContentTypes = MediaFormats.contentTypes
+        // Where to put the files as they come in: nowhere, a playlist that exists, or a new one (named here).
+        let chooser = AddToPlaylistChooser(playlists: library.playlists, preselect: { if case .playlist(let id) = self.filter { return id } else { return nil } }())
+        panel.accessoryView = chooser.view
+        panel.isAccessoryViewDisclosed = true
         SharingStateManager.shared.beginInteraction()
         NSApp.activate(ignoringOtherApps: true)
+        panel.presentAboveNotch()
         panel.begin { [weak self] response in
             SharingStateManager.shared.endInteraction()
             guard response == .OK, let self else { return }
             let urls = panel.urls
-            Task { await self.library.importURLs(urls) }
+            let choice = chooser.choice
+            Task { @MainActor in
+                var summary = await self.library.importURLs(urls)
+                switch choice {
+                case .none: break
+                case .existing(let id):
+                    if let name = self.library.playlists.first(where: { $0.id == id })?.name {
+                        self.library.add(summary.itemIDs, toPlaylist: id)
+                        summary.playlistName = name
+                    }
+                case .new(let name):
+                    guard !summary.itemIDs.isEmpty else { break }
+                    let playlist = self.library.createPlaylist(named: name, with: summary.itemIDs)
+                    summary.playlistName = playlist.name
+                    self.filter = .playlist(playlist.id)
+                }
+                if summary.playlistName != nil { self.library.lastSummary = summary }
+            }
         }
     }
 
@@ -204,6 +226,7 @@ final class PlayerUI: ObservableObject {
         panel.allowedContentTypes = MediaFormats.supported.compactMap { UTType(filenameExtension: $0) }
         SharingStateManager.shared.beginInteraction()
         NSApp.activate(ignoringOtherApps: true)
+        panel.presentAboveNotch()
         panel.begin { [weak self] response in
             SharingStateManager.shared.endInteraction()
             guard response == .OK, let url = panel.url, let self else { return }
@@ -226,5 +249,69 @@ final class PlayerUI: ObservableObject {
             break
         }
         naming = nil
+    }
+}
+
+
+// MARK: - Choosing a playlist in the open panel
+
+/// The strip under the open panel's file list: "Add to playlist: [none / existing / New playlist…]" and, for a new one, its name.
+@MainActor
+final class AddToPlaylistChooser: NSObject, NSTextFieldDelegate {
+    enum Choice { case none, existing(UUID), new(String) }
+
+    let view = NSView(frame: NSRect(x: 0, y: 0, width: 460, height: 34))
+    private let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let nameField = NSTextField()
+    private let playlists: [Playlist]
+    private let newTag = -1
+
+    init(playlists: [Playlist], preselect: UUID?) {
+        self.playlists = playlists
+        super.init()
+        let label = NSTextField(labelWithString: String(localized: "Also put in playlist:"))
+        label.font = .systemFont(ofSize: 12)
+        popup.addItem(withTitle: String(localized: "None (library only)"))
+        popup.menu?.addItem(.separator())
+        for (index, playlist) in playlists.enumerated() {
+            let item = NSMenuItem(title: playlist.name, action: nil, keyEquivalent: "")
+            item.tag = index + 1
+            popup.menu?.addItem(item)
+        }
+        if !playlists.isEmpty { popup.menu?.addItem(.separator()) }
+        let new = NSMenuItem(title: String(localized: "New playlist…"), action: nil, keyEquivalent: "")
+        new.tag = newTag
+        popup.menu?.addItem(new)
+        popup.target = self
+        popup.action = #selector(changed)
+        if let preselect, let index = playlists.firstIndex(where: { $0.id == preselect }) { popup.selectItem(withTag: index + 1) }
+
+        nameField.placeholderString = String(localized: "Playlist name")
+        nameField.stringValue = ""
+        nameField.isHidden = true
+
+        for sub in [label, popup, nameField] { sub.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(sub) }
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            popup.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 8),
+            popup.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            popup.widthAnchor.constraint(equalToConstant: 170),
+            nameField.leadingAnchor.constraint(equalTo: popup.trailingAnchor, constant: 8),
+            nameField.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            nameField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+        ])
+    }
+
+    @objc private func changed() {
+        nameField.isHidden = popup.selectedItem?.tag != newTag
+        if !nameField.isHidden { nameField.window?.makeFirstResponder(nameField) }
+    }
+
+    var choice: Choice {
+        guard let tag = popup.selectedItem?.tag else { return .none }
+        if tag == newTag { return .new(nameField.stringValue) }
+        if tag >= 1, tag <= playlists.count { return .existing(playlists[tag - 1].id) }
+        return .none
     }
 }

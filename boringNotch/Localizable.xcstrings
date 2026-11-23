@@ -33354,6 +33354,70 @@
           }
         }
       }
+    },
+    "Also put in playlist:" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同時加入播放清單："
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同时加入播放列表："
+          }
+        }
+      }
+    },
+    "None (library only)" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不加入（只放進資料庫）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不加入（只放进资料库）"
+          }
+        }
+      }
+    },
+    "Put %lld files in “%@”" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已把 %lld 個檔案放進「%@」"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已把 %lld 个文件放进“%@”"
+          }
+        }
+      }
+    },
+    "Added %lld files to “%@”" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已新增 %lld 個檔案到「%@」"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已添加 %lld 个文件到“%@”"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

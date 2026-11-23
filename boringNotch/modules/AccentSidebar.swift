@@ -7,7 +7,17 @@
 //  (as the settings window does).
 //
 
+import AppKit
 import SwiftUI
+
+extension NSSavePanel {
+    /// The notch floats above ordinary windows (it sits at the main-menu level), so a panel opened from it would come up behind
+    /// it. Raise the panel over the notch and put it in the middle of the screen.
+    func presentAboveNotch() {
+        level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 6)
+        center()
+    }
+}
 
 struct AccentSidebarRow<Content: View>: View {
     let selected: Bool

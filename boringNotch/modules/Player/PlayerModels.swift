@@ -84,14 +84,18 @@ struct ImportSummary: Equatable {
     var alreadyInLibrary = 0
     /// Every file that was looked at and left out, with why.
     var skipped: [SkippedFile] = []
+    /// Every playable file of the selection that is in the library afterwards, new or already there, in selection order.
+    var itemIDs: [UUID] = []
+    /// The playlist they were put into at the same time, if one was chosen.
+    var playlistName: String?
 
     /// Names of files in formats the system cannot play (mkv, webm…).
     var unsupported: [String] { skipped.filter(\.isFormatProblem).map(\.name) }
     /// Names of files that looked playable but could not be read.
     var failed: [String] { skipped.filter { !$0.isFormatProblem }.map(\.name) }
 
-    var isEmpty: Bool { added == 0 && alreadyInLibrary == 0 && skipped.isEmpty }
-    var report: ImportReport { ImportReport(domain: .media, added: added, alreadyInLibrary: alreadyInLibrary, skipped: skipped) }
+    var isEmpty: Bool { added == 0 && alreadyInLibrary == 0 && skipped.isEmpty && itemIDs.isEmpty }
+    var report: ImportReport { ImportReport(domain: .media, added: added, alreadyInLibrary: alreadyInLibrary, skipped: skipped, playlistName: playlistName) }
 }
 
 enum LibraryFilter: Hashable {

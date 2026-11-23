@@ -131,12 +131,16 @@ enum AppModules {
     }
 
     /// Size of the open notch: the default, or what the selected module asks for.
+    private static let minContentOpenHeight: CGFloat = 120
+
     static func openSize() -> CGSize {
         guard let content = registry.selected?.preferredContentSize else { return openNotchSize }
         let headerAllowance: CGFloat = 44
         return CGSize(
             width: min(max(content.width + 40, openNotchSize.width), maxOpenNotchSize.width),
-            height: min(max(content.height + headerAllowance, openNotchSize.height), maxOpenNotchSize.height)
+            // A page that reports its own height may be shorter than the default open notch (an agent list with one session
+            // needs no more than it holds); the floor only keeps the header and a little body from collapsing.
+            height: min(max(content.height + headerAllowance, minContentOpenHeight), maxOpenNotchSize.height)
         )
     }
 }
