@@ -156,6 +156,9 @@ final class DesktopPetController: NSObject, ObservableObject {
     private var petPanel: PetPanel?
     private var bubblePanel: BubblePanel?
     private var started = false
+    /// What `refresh` decided: the pet is wanted on screen right now. Every path that puts a window up asks this first, so a
+    /// pet that is switched off is never brought back by a screen change, a drag or anything else.
+    private(set) var shouldShow = false
     private var awakeUntil: Date = .distantPast
     private var userOpenedList = false
     private var lastStatus: AgentStatus = .idle
@@ -181,7 +184,7 @@ final class DesktopPetController: NSObject, ObservableObject {
             Task { @MainActor in self?.defaultsChanged() }
         }
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.layout() }
+            Task { @MainActor in self?.refresh() }
         }
         track()
         refresh()
@@ -246,6 +249,7 @@ final class DesktopPetController: NSObject, ObservableObject {
 
         let visible = DesktopPetRules.isVisible(enabled: enabled, when: defaults.string(forKey: SettingsKey.desktopPetWhen) ?? "always",
                                                 busy: newStatus != .idle, bubbleOpen: bubbleOpen)
+        shouldShow = visible
         if visible { ensurePanels() } else { hidePanels() }
         refreshAnimating(visible: visible)
         if visible { layout() }
@@ -328,7 +332,7 @@ final class DesktopPetController: NSObject, ObservableObject {
 
     /// Puts the pet at its saved place (or in the lower right corner) and the bubble beside it.
     func layout() {
-        guard let petPanel else { return }
+        guard shouldShow, let petPanel else { return }
         let screen = currentScreen
         let visible = screen.visibleFrame
         let position = PetPosition.parse(defaults.string(forKey: SettingsKey.desktopPetPosition)) ?? PetPosition()
@@ -343,7 +347,7 @@ final class DesktopPetController: NSObject, ObservableObject {
 
     private func layoutBubble() {
         guard let bubblePanel, let petPanel else { return }
-        guard bubbleOpen else { bubblePanel.orderOut(nil); return }
+        guard shouldShow, bubbleOpen else { bubblePanel.orderOut(nil); return }
         let size = CGSize(width: Self.bubbleWidth, height: bubbleContentHeight + Self.tailHeight)
         let petInner = petPanel.frame.insetBy(dx: Self.margin, dy: Self.margin)
         let visible = (petPanel.screen ?? currentScreen).visibleFrame
@@ -398,13 +402,13 @@ final class DesktopPetController: NSObject, ObservableObject {
 
     func resetPosition() {
         defaults.removeObject(forKey: SettingsKey.desktopPetPosition)
-        layout()
+        layout()   // does nothing unless the pet is on screen
     }
 
     // MARK: Dragging
 
     func dragMoved() {
-        guard let petPanel else { return }
+        guard shouldShow, let petPanel else { return }
         let mouse = NSEvent.mouseLocation
         if dragStartMouse == nil { dragStartMouse = mouse; dragStartOrigin = petPanel.frame.origin }
         guard let startMouse = dragStartMouse, let startOrigin = dragStartOrigin else { return }
@@ -630,7 +634,10 @@ public enum DesktopPet {
 
     #if DEBUG
     /// Snapshots only: keeps the windows off the real screen and hands out their window numbers.
-    @MainActor public static func debugUseOffscreen() { DesktopPetController.shared.debugOffscreen = true; DesktopPetController.shared.refresh() }
+    @MainActor public static func debugUseOffscreen() { DesktopPetController.shared.debugOffscreen = true; if DesktopPetController.shared.shouldShow { DesktopPetController.shared.refresh() } }
+    @MainActor public static var debugPetWindowVisible: Bool { DesktopPetController.shared.debugPetWindow?.isVisible ?? false }
+    @MainActor public static var debugBubbleWindowVisible: Bool { DesktopPetController.shared.debugBubbleWindow?.isVisible ?? false }
+    @MainActor public static func debugRefresh() { DesktopPetController.shared.refresh() }
     @MainActor public static var debugPetWindowNumber: Int? { DesktopPetController.shared.debugPetWindow?.windowNumber }
     @MainActor public static var debugBubbleWindowNumber: Int? { DesktopPetController.shared.debugBubbleWindow.flatMap { $0.isVisible ? $0.windowNumber : nil } }
     @MainActor public static func debugOpenList() { DesktopPetController.shared.toggleList() }

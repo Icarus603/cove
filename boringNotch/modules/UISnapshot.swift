@@ -1089,8 +1089,8 @@ enum UISnapshot {
 
     /// The desktop pet in each pose, and the bubble with each kind of card.
     static func petShots(dir: String) async {
+        DesktopPet.debugUseOffscreen()   // before start, so no window ever appears on the real screen
         DesktopPet.start()
-        DesktopPet.debugUseOffscreen()
         let runtime = AgentRuntime.shared
         func capture(_ name: String, _ number: Int?) {
             guard let number else { return }
@@ -1118,6 +1118,15 @@ enum UISnapshot {
         await scene("6-completion", scenario: "completion", keepCollapsed: false)
         await scene("7-celebrate", scenario: "none", keepCollapsed: true, celebrate: true)
         await scene("8-list", scenario: "multi", keepCollapsed: true, open: true)
+        // Switched off, the pet must stay away whatever happens: a screen change, a refresh, a drag.
+        UserDefaults.standard.setVolatileDomain(["desktopPetEnabled": false], forName: UserDefaults.argumentDomain)
+        DesktopPet.debugRefresh()
+        await sleep(0.5)
+        log.append("after turning it off: pet visible \(DesktopPet.debugPetWindowVisible), bubble visible \(DesktopPet.debugBubbleWindowVisible)")
+        NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: nil)
+        await sleep(0.8)
+        log.append("after a screen change while off: pet visible \(DesktopPet.debugPetWindowVisible), bubble visible \(DesktopPet.debugBubbleWindowVisible)")
         try? log.joined(separator: "\n").write(toFile: dir + "/pet.txt", atomically: true, encoding: .utf8)
     }
 
