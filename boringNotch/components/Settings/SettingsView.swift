@@ -65,7 +65,7 @@ struct SettingsView: View {
                                     Text(item.title)
                                 } icon: {
                                     Image(systemName: item.icon)
-                                        .foregroundStyle(Color.effectiveAccent)
+                                        .foregroundStyle(selectedTab == item.id ? Color.white : Color.effectiveAccent)
                                 }
                             }
                         }
