@@ -224,6 +224,13 @@ enum UISnapshot {
                 NSApp.terminate(nil)
                 return
             }
+            if env["COVE_SHOT_ALBUM_ORDER"] != nil {
+                let report = await PhotoChecks.albumOrder()
+                try? report.write(toFile: dir + "/album_order.txt", atomically: true, encoding: .utf8)
+                try? "done".write(toFile: dir + "/DONE", atomically: true, encoding: .utf8)
+                NSApp.terminate(nil)
+                return
+            }
             if let fixtures = env["COVE_SHOT_PLAYER_MANAGER"] { await playerManagerChecks(fixtures: URL(fileURLWithPath: fixtures), dir: dir) }
             // COVE_SHOT_PHOTO_LOGIC=<fixtures dir> [COVE_SHOT_PHOTO_MANY=<big dir>]: the photo library against real files.
             if let fixtures = env["COVE_SHOT_PHOTO_LOGIC"] {

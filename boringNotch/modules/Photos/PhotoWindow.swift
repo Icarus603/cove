@@ -146,6 +146,8 @@ struct PhotoWindowView: View {
         }
         .animation(.easeInOut(duration: 0.15), value: model.viewing)
         .frame(minWidth: 820, minHeight: 520)
+        // The title bar's sidebar button means nothing while a photo is open (and used to pull the sidebar over it): hide it then.
+        .toolbar(model.viewing == nil ? .visible : .hidden, for: .windowToolbar)
         .tint(Color.effectiveAccent)
         .onAppear { applyPending(); if PhotoWindowView.debugSelectAll { Task { try? await Task.sleep(nanoseconds: 800_000_000); model.selectAll() } } }
         .onReceive(NotificationCenter.default.publisher(for: PhotoWindowController.requestNotification)) { _ in applyPending() }
@@ -206,8 +208,8 @@ struct PhotoWindowView: View {
             }
             .frame(height: ToolbarMetrics.height)
             Menu {
-                ForEach(PhotoSort.allCases) { sort in
-                    Button { model.sort = sort } label: { if model.sort == sort { Label(Self.sortName(sort), systemImage: "checkmark") } else { Text(Self.sortName(sort)) } }
+                ForEach(PhotoSort.choices(inAlbum: model.isAlbum)) { sort in
+                    Button { model.currentSort = sort } label: { if model.currentSort == sort { Label(Self.sortName(sort), systemImage: "checkmark") } else { Text(Self.sortName(sort)) } }
                 }
             } label: {
                 Image(systemName: "arrow.up.arrow.down").font(.system(size: 13)).frame(width: ToolbarMetrics.height, height: ToolbarMetrics.height).contentShape(Rectangle())
@@ -250,6 +252,15 @@ struct PhotoWindowView: View {
                 }
             } label: { ToolbarPillLabel(title: "Add to album", symbol: "rectangle.stack.badge.plus", showsChevron: true) }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            if model.canArrange {
+                Menu {
+                    Button { model.moveInAlbum(model.selection, .start) } label: { Label("Move to the start", systemImage: "arrow.up.to.line") }
+                    Button { model.moveInAlbum(model.selection, .earlier) } label: { Label("Move earlier", systemImage: "arrow.up") }
+                    Button { model.moveInAlbum(model.selection, .later) } label: { Label("Move later", systemImage: "arrow.down") }
+                    Button { model.moveInAlbum(model.selection, .end) } label: { Label("Move to the end", systemImage: "arrow.down.to.line") }
+                } label: { ToolbarPillLabel(title: "Arrange", symbol: "arrow.up.arrow.down", showsChevron: true) }
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            }
             if case .album = model.scope {
                 ToolbarPillButton(title: "Remove from album", symbol: "minus.circle") { handleRemove() }.fixedSize()
             } else {
@@ -260,6 +271,7 @@ struct PhotoWindowView: View {
 
     static func sortName(_ sort: PhotoSort) -> LocalizedStringKey {
         switch sort {
+        case .manual: return "Custom order"
         case .takenNewest: return "Date taken, newest first"
         case .takenOldest: return "Date taken, oldest first"
         case .name: return "Name"

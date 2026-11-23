@@ -18,6 +18,8 @@ final class PhotoBrowserModel: ObservableObject {
     @Published var scope: PhotoScope = .all { didSet { if oldValue != scope { selection = []; reload() } } }
     @Published var search = "" { didSet { if oldValue != search { scheduleReload() } } }
     @Published var sort: PhotoSort { didSet { UserDefaults.standard.set(sort.rawValue, forKey: Self.sortKey); reload() } }
+    /// Inside an album the photos are in the order the user arranged, unless another order is picked here.
+    @Published var albumSort: PhotoSort { didSet { UserDefaults.standard.set(albumSort.rawValue, forKey: Self.albumSortKey); reload() } }
     @Published var thumbSize: Double { didSet { UserDefaults.standard.set(thumbSize, forKey: Self.sizeKey) } }
     @Published private(set) var ids: [Int64] = []
     @Published var selection: Set<Int64> = []
@@ -30,6 +32,7 @@ final class PhotoBrowserModel: ObservableObject {
     @Published var isLoading = false
 
     private static let sortKey = "photos.sort"
+    private static let albumSortKey = "photos.albumSort"
     private static let sizeKey = "photos.thumbSize"
     private var anchor: Int64?
     private var reloadTask: Task<Void, Never>?
@@ -42,7 +45,9 @@ final class PhotoBrowserModel: ObservableObject {
 
     init(library: PhotoLibrary = .shared) {
         self.library = library
-        sort = PhotoSort(rawValue: UserDefaults.standard.string(forKey: Self.sortKey) ?? "") ?? .takenNewest
+        let storedSort = PhotoSort(rawValue: UserDefaults.standard.string(forKey: Self.sortKey) ?? "") ?? .takenNewest
+        sort = storedSort == .manual ? .takenNewest : storedSort
+        albumSort = PhotoSort(rawValue: UserDefaults.standard.string(forKey: Self.albumSortKey) ?? "") ?? .manual
         let stored = UserDefaults.standard.double(forKey: Self.sizeKey)
         thumbSize = stored > 0 ? stored : 150
         observer = library.$revision.dropFirst().sink { [weak self] _ in self?.reload() }
@@ -54,6 +59,27 @@ final class PhotoBrowserModel: ObservableObject {
         chromeTimer?.invalidate()
     }
 
+    // MARK: Sorting and arranging
+
+    var isAlbum: Bool { if case .album = scope { return true } else { return false } }
+
+    /// The sort in force here: the album's own while an album is open.
+    var currentSort: PhotoSort {
+        get { isAlbum ? albumSort : sort }
+        set { if isAlbum { albumSort = newValue } else { sort = newValue } }
+    }
+
+    /// Photos can be moved by hand in an album that is showing its own order and not being searched.
+    var canArrange: Bool { isAlbum && albumSort == .manual && search.isEmpty }
+
+    func moveInAlbum(_ moving: Set<Int64>, _ move: PhotoMove) {
+        guard canArrange, case .album(let albumID) = scope else { return }
+        let new = PhotoOrder.moved(ids, moving: moving, move)
+        guard new != ids else { return }
+        ids = new
+        Task { await library.setAlbumOrder(albumID, ordered: new) }
+    }
+
     // MARK: List
 
     func reload() {
@@ -61,7 +87,7 @@ final class PhotoBrowserModel: ObservableObject {
         isLoading = true
         reloadTask = Task { [weak self] in
             guard let self else { return }
-            let new = await library.ids(scope: scope, search: search, sort: sort)
+            let new = await library.ids(scope: scope, search: search, sort: currentSort)
             guard !Task.isCancelled else { return }
             ids = new
             isLoading = false

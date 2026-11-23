@@ -317,6 +317,10 @@ final class PhotoLibrary: ObservableObject {
         return albums.first { $0.id == id }
     }
 
+    func setAlbumOrder(_ albumID: Int64, ordered: [Int64]) async {
+        try? await store?.setAlbumOrder(albumID, ordered: ordered)
+    }
+
     func renameAlbum(_ id: Int64, to name: String) async {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }

@@ -57,6 +57,7 @@ struct PhotoCell: View {
 struct PhotoGridView: View {
     @ObservedObject var model: PhotoBrowserModel
     @ObservedObject private var library = PhotoLibrary.shared
+    @State private var dropTarget: Int64?
 
     var body: some View {
         GeometryReader { geo in
@@ -73,6 +74,13 @@ struct PhotoGridView: View {
                                 model.click(id, command: flags.contains(.command), shift: flags.contains(.shift))
                             }
                             .onDrag { dragProvider(for: id) }
+                            // In an album with its own order, a photo dropped on another goes in front of it.
+                            .overlay(alignment: .leading) {
+                                if dropTarget == id { Rectangle().fill(Color.effectiveAccent).frame(width: 3) }
+                            }
+                            .onDrop(of: [.plainText], isTargeted: Binding(get: { dropTarget == id }, set: { dropTarget = $0 ? id : (dropTarget == id ? nil : dropTarget) })) { providers in
+                                drop(providers, before: id)
+                            }
                             .contextMenu { PhotoMenu(model: model, id: id) }
                     }
                 }
@@ -80,6 +88,16 @@ struct PhotoGridView: View {
             // A click on empty space clears the selection.
             .background(Color.clear.contentShape(Rectangle()).onTapGesture { model.clearSelection() })
         }
+    }
+
+    private func drop(_ providers: [NSItemProvider], before target: Int64) -> Bool {
+        guard model.canArrange, let provider = providers.first(where: { $0.canLoadObject(ofClass: NSString.self) }) else { return false }
+        _ = provider.loadObject(ofClass: NSString.self) { item, _ in
+            guard let text = item as? String, text.hasPrefix("cove-photos:") else { return }
+            let ids = Set(text.dropFirst("cove-photos:".count).split(separator: ",").compactMap { Int64($0) })
+            Task { @MainActor in model.moveInAlbum(ids, .before(target)); dropTarget = nil }
+        }
+        return true
     }
 
     /// What is dragged to an album in the sidebar: the ids of the selection, or of this photo alone.
@@ -108,6 +126,14 @@ struct PhotoMenu: View {
                 }
             }
         } label: { Label("Add to album", systemImage: "rectangle.stack.badge.plus") }
+        if model.canArrange {
+            Menu {
+                Button { model.moveInAlbum(Set(targets), .start) } label: { Label("Move to the start", systemImage: "arrow.up.to.line") }
+                Button { model.moveInAlbum(Set(targets), .earlier) } label: { Label("Move earlier", systemImage: "arrow.up") }
+                Button { model.moveInAlbum(Set(targets), .later) } label: { Label("Move later", systemImage: "arrow.down") }
+                Button { model.moveInAlbum(Set(targets), .end) } label: { Label("Move to the end", systemImage: "arrow.down.to.line") }
+            } label: { Label("Arrange", systemImage: "arrow.up.arrow.down") }
+        }
         if case .album = model.scope {
             Button { model.removeTargets(targets) } label: { Label("Remove from album", systemImage: "minus.circle") }
         }

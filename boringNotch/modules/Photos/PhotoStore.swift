@@ -55,7 +55,19 @@ final class PhotoStore: @unchecked Sendable {
                 );
                 CREATE INDEX IF NOT EXISTS album_photos_photo ON album_photos(photo_id);
                 """)
-            if database.userVersion == 0 { database.userVersion = 1 }
+            if database.userVersion < 2 {
+                // v2: an order of their own for the photos of an album. Existing albums start in the order they showed so far.
+                try database.exec("ALTER TABLE album_photos ADD COLUMN position REAL NOT NULL DEFAULT 0")
+                let albumIDs = try database.prepare("SELECT id FROM albums").rows([]) { $0.int(0) }
+                for album in albumIDs {
+                    let photoIDs = try database.prepare("SELECT ap.photo_id FROM album_photos ap JOIN photos p ON p.id = ap.photo_id WHERE ap.album_id = ? ORDER BY p.taken DESC, p.id DESC")
+                        .rows([.int(album)]) { $0.int(0) }
+                    for (index, photo) in photoIDs.enumerated() {
+                        try database.run("UPDATE album_photos SET position = ? WHERE album_id = ? AND photo_id = ?", [.double(Double(index + 1)), .int(album), .int(photo)])
+                    }
+                }
+                database.userVersion = 2
+            }
         }
     }
 
@@ -132,6 +144,8 @@ final class PhotoStore: @unchecked Sendable {
             }
             if !conditions.isEmpty { sql += " WHERE " + conditions.joined(separator: " AND ") }
             switch sort {
+            case .manual:
+                if case .album = scope { sql += " ORDER BY ap.position ASC, p.id ASC" } else { sql += " ORDER BY p.taken DESC, p.name COLLATE NOCASE DESC, p.id DESC" }
             // Equal times (a burst, a folder added in one go) fall back to file-name order, never to the order files happened to finish.
             case .takenNewest: sql += " ORDER BY p.taken DESC, p.name COLLATE NOCASE DESC, p.id DESC"
             case .takenOldest: sql += " ORDER BY p.taken ASC, p.name COLLATE NOCASE ASC, p.id ASC"
@@ -236,6 +250,20 @@ final class PhotoStore: @unchecked Sendable {
         }
     }
 
+    /// Writes the order of an album: these photos, in this order, come first and in sequence.
+    func setAlbumOrder(_ albumID: Int64, ordered: [Int64]) async throws {
+        try await perform { db in
+            try db.transaction {
+                let statement = try db.prepare("UPDATE album_photos SET position = ? WHERE album_id = ? AND photo_id = ?")
+                for (index, id) in ordered.enumerated() {
+                    statement.reset()
+                    try statement.bind([.double(Double(index + 1)), .int(albumID), .int(id)])
+                    try statement.step()
+                }
+            }
+        }
+    }
+
     func renameAlbum(_ id: Int64, to name: String) async throws {
         try await perform { db in try db.run("UPDATE albums SET name = ? WHERE id = ?", [.text(name), .int(id)]) }
     }
@@ -250,12 +278,14 @@ final class PhotoStore: @unchecked Sendable {
             try db.transaction {
                 var added = 0
                 let now = Date().timeIntervalSince1970
-                let statement = try db.prepare("INSERT OR IGNORE INTO album_photos(album_id, photo_id, added) SELECT ?, id, ? FROM photos WHERE id = ?")
+                // New photos go to the end of the album, in the order given.
+                var position = try db.prepare("SELECT COALESCE(MAX(position), 0) FROM album_photos WHERE album_id = ?").rows([.int(albumID)]) { Double($0.int(0)) }.first ?? 0
+                let statement = try db.prepare("INSERT OR IGNORE INTO album_photos(album_id, photo_id, added, position) SELECT ?, id, ?, ? FROM photos WHERE id = ?")
                 for id in photoIDs {
                     statement.reset()
-                    try statement.bind([.int(albumID), .double(now), .int(id)])
+                    try statement.bind([.int(albumID), .double(now), .double(position + 1), .int(id)])
                     try statement.step()
-                    added += db.changes
+                    if db.changes > 0 { added += db.changes; position += 1 }
                 }
                 return added
             }

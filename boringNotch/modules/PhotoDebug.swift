@@ -218,4 +218,73 @@ enum PhotoChecks {
         return lines.joined(separator: "\n") + "\n"
     }
 }
+
+extension PhotoChecks {
+    /// A small, fast check of album ordering: the arithmetic of moving, and the upgrade of a database made before albums had an
+    /// order of their own (a copy of one is built here, with the old table layout).
+    static func albumOrder() async -> String {
+        var lines: [String] = []
+        var failures = 0
+        func check(_ name: String, _ ok: Bool, _ detail: String = "") {
+            if !ok { failures += 1 }
+            lines.append((ok ? "PASS " : "FAIL ") + name + (detail.isEmpty ? "" : "  [\(detail)]"))
+        }
+        let a: [Int64] = [1, 2, 3, 4, 5, 6]
+        check("move to the start", PhotoOrder.moved(a, moving: [4, 5], .start) == [4, 5, 1, 2, 3, 6])
+        check("move to the end", PhotoOrder.moved(a, moving: [2, 3], .end) == [1, 4, 5, 6, 2, 3])
+        check("move before another", PhotoOrder.moved(a, moving: [5, 6], .before(2)) == [1, 5, 6, 2, 3, 4])
+        check("dropping on itself changes nothing", PhotoOrder.moved(a, moving: [3], .before(3)) == a)
+        check("move earlier by one", PhotoOrder.moved(a, moving: [3, 6], .earlier) == [1, 3, 2, 4, 6, 5])
+        check("the first one cannot move earlier", PhotoOrder.moved(a, moving: [1, 2], .earlier) == a)
+        check("move later by one", PhotoOrder.moved(a, moving: [1, 4], .later) == [2, 1, 3, 5, 4, 6])
+        check("the last one cannot move later", PhotoOrder.moved(a, moving: [5, 6], .later) == a)
+        check("nothing selected changes nothing", PhotoOrder.moved(a, moving: [], .start) == a)
+
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("cove-album-order-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("old.sqlite")
+        do {
+            // The layout before this change: no `position`, user_version 1.
+            let old = try SQLiteDatabase(url: url)
+            try old.exec("""
+                CREATE TABLE photos(id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, bookmark BLOB, name TEXT NOT NULL,
+                    width INTEGER NOT NULL DEFAULT 0, height INTEGER NOT NULL DEFAULT 0, taken REAL NOT NULL, added REAL NOT NULL,
+                    size INTEGER NOT NULL DEFAULT 0, missing INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE albums(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created REAL NOT NULL);
+                CREATE TABLE album_photos(album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+                    photo_id INTEGER NOT NULL REFERENCES photos(id) ON DELETE CASCADE, added REAL NOT NULL, PRIMARY KEY(album_id, photo_id));
+                """)
+            for i in 1...5 { _ = try old.run("INSERT INTO photos(path, name, taken, added) VALUES (?, ?, ?, ?)", [.text("/x/\(i).jpg"), .text("\(i).jpg"), .double(Double(i * 100)), .double(1)]) }
+            _ = try old.run("INSERT INTO albums(name, created) VALUES ('Trip', 1)")
+            for i in [1, 2, 3] { _ = try old.run("INSERT INTO album_photos(album_id, photo_id, added) VALUES (1, ?, 1)", [.int(Int64(i))]) }
+            old.userVersion = 1
+        } catch { check("build an old-format database", false, "\(error)"); lines.append("\(failures) FAILED"); return lines.joined(separator: "\n") + "\n" }
+
+        do {
+            let store = try PhotoStore(url: url)
+            let first = try await store.ids(scope: .album(1), search: "", sort: .manual)
+            check("an old album opens in the order it showed (newest taken first)", first == [3, 2, 1], "\(first)")
+            let all = try await store.ids(scope: .all, search: "", sort: .takenNewest)
+            check("the library itself is intact", all.count == 5, "\(all)")
+            _ = try await store.add([5, 4], toAlbum: 1)
+            let added = try await store.ids(scope: .album(1), search: "", sort: .manual)
+            check("photos added later go to the end, in the order given", added == [3, 2, 1, 5, 4], "\(added)")
+            _ = try await store.add([5], toAlbum: 1)
+            check("adding one twice changes nothing", try await store.ids(scope: .album(1), search: "", sort: .manual) == added)
+            try await store.setAlbumOrder(1, ordered: PhotoOrder.moved(added, moving: [4], .start))
+            let moved = try await store.ids(scope: .album(1), search: "", sort: .manual)
+            check("a saved order comes back as saved", moved == [4, 3, 2, 1, 5], "\(moved)")
+            let other = try await store.ids(scope: .all, search: "", sort: .manual)
+            check("outside an album the custom order falls back to date", other == all, "\(other)")
+        } catch { check("open and use the upgraded database", false, "\(error)") }
+        do {
+            let reopened = try PhotoStore(url: url)
+            let again = try await reopened.ids(scope: .album(1), search: "", sort: .manual)
+            check("the upgrade is not repeated and the order survives a restart", again == [4, 3, 2, 1, 5], "\(again)")
+        } catch { check("reopen the database", false, "\(error)") }
+        lines.append(failures == 0 ? "ALL PASSED" : "\(failures) FAILED")
+        return lines.joined(separator: "\n") + "\n"
+    }
+}
 #endif

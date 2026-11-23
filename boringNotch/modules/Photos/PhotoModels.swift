@@ -38,7 +38,43 @@ enum PhotoScope: Hashable {
 
 enum PhotoSort: String, CaseIterable, Identifiable {
     case takenNewest, takenOldest, name, addedNewest
+    /// The order the user arranged inside an album (only meaningful there).
+    case manual
     var id: String { rawValue }
+
+    /// What the sort menu offers: the arranged order only inside an album.
+    static func choices(inAlbum: Bool) -> [PhotoSort] {
+        inAlbum ? [.manual, .takenNewest, .takenOldest, .name, .addedNewest] : [.takenNewest, .takenOldest, .name, .addedNewest]
+    }
+}
+
+/// Where photos moved by hand go in an album.
+enum PhotoMove: Equatable {
+    case before(Int64), start, end, earlier, later
+}
+
+enum PhotoOrder {
+    /// The album order after moving `moving` as asked. Moved photos keep their order among themselves.
+    static func moved(_ order: [Int64], moving: Set<Int64>, _ move: PhotoMove) -> [Int64] {
+        let picked = order.filter { moving.contains($0) }
+        guard !picked.isEmpty else { return order }
+        let rest = order.filter { !moving.contains($0) }
+        switch move {
+        case .start: return picked + rest
+        case .end: return rest + picked
+        case .before(let target):
+            guard let index = rest.firstIndex(of: target) else { return order }
+            return Array(rest[..<index]) + picked + Array(rest[index...])
+        case .earlier:
+            var a = order
+            for i in 1..<max(a.count, 1) where moving.contains(a[i]) && !moving.contains(a[i - 1]) { a.swapAt(i, i - 1) }
+            return a
+        case .later:
+            var a = order
+            for i in stride(from: a.count - 2, through: 0, by: -1) where moving.contains(a[i]) && !moving.contains(a[i + 1]) { a.swapAt(i, i + 1) }
+            return a
+        }
+    }
 }
 
 /// What a file name says about whether the photo library can show it.
