@@ -288,7 +288,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let hosting = NotchHostingView(
             rootView: ContentView()
-                .environmentObject(viewModel),
+                .environmentObject(viewModel)
+                .coveAccent(),
             viewModel: viewModel
         )
         // The window keeps the size and top-edge position given here. Left to itself the hosting view resizes the
@@ -328,6 +329,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.current = self
+        AccentSelection.install()
         // Agents must be listening for hooks from launch, not from the first time the notch opens.
         AppModules.bootstrap()
         #if DEBUG

@@ -14,7 +14,7 @@ import SwiftUI
 final class PhotoNotchModel: ObservableObject {
     static let shared = PhotoNotchModel()
 
-    @Published var scope: PhotoScope = .all { didSet { reload() } }
+    @Published var scope: PhotoScope = PhotoScope.saved { didSet { PhotoScope.saved = scope; reload() } }
     @Published private(set) var ids: [Int64] = []
     private var observer: AnyCancellable?
     private var task: Task<Void, Never>?
@@ -34,7 +34,7 @@ final class PhotoNotchModel: ObservableObject {
             let all = await PhotoLibrary.shared.ids(scope: scope, sort: isAlbum ? .manual : .takenNewest)
             guard !Task.isCancelled else { return }
             ids = Array(all.prefix(300))
-            if case .album(let id) = scope, !PhotoLibrary.shared.albums.contains(where: { $0.id == id }) { scope = .all }
+            if case .album(let id) = scope, PhotoLibrary.shared.summaryLoaded, !PhotoLibrary.shared.albums.contains(where: { $0.id == id }) { scope = .all }
         }
     }
 }
@@ -65,13 +65,19 @@ struct PhotoNotchView: View {
 
     private var header: some View {
         HStack(spacing: 6) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 5) {
-                    chip(String(localized: "All Photos"), count: library.photoCount, selected: model.scope == .all) { model.scope = .all }
-                    ForEach(library.albums) { album in
-                        chip(album.name, count: album.count, selected: model.scope == .album(album.id)) { model.scope = .album(album.id) }
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 5) {
+                        chip(String(localized: "All Photos"), count: library.photoCount, selected: model.scope == .all) { model.scope = .all }.id(Int64(-1))
+                        ForEach(library.albums) { album in
+                            chip(album.name, count: album.count, selected: model.scope == .album(album.id)) { model.scope = .album(album.id) }.id(album.id)
+                        }
                     }
                 }
+                // Open with the remembered album in view rather than with the row back at its start.
+                .onAppear { scrollToSelected(proxy, animated: false) }
+                .onChange(of: library.albums.count) { _, _ in scrollToSelected(proxy, animated: false) }
+                .onChange(of: model.scope) { _, _ in scrollToSelected(proxy, animated: true) }
             }
             Button { PhotoActions.chooseFilesToAdd() } label: {
                 Label("Add", systemImage: "plus")
@@ -92,6 +98,11 @@ struct PhotoNotchView: View {
             .buttonStyle(.plain)
         }
         .frame(height: 26)
+    }
+
+    private func scrollToSelected(_ proxy: ScrollViewProxy, animated: Bool) {
+        guard case .album(let id) = model.scope else { return }
+        if animated { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .center) } } else { proxy.scrollTo(id, anchor: .center) }
     }
 
     private func chip(_ title: String, count: Int, selected: Bool, action: @escaping () -> Void) -> some View {

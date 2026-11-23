@@ -28,7 +28,7 @@ final class PlayerManagerWindowController: NSObject, NSWindowDelegate {
             window.isReleasedWhenClosed = false
             window.minSize = NSSize(width: 860, height: 500)
             window.identifier = NSUserInterfaceItemIdentifier("CovePlayerManagerWindow")
-            let hosting = NSHostingController(rootView: PlayerManagerView())
+            let hosting = NSHostingController(rootView: PlayerManagerView().coveAccent())
             hosting.sizingOptions = []
             window.contentViewController = hosting
             window.delegate = self

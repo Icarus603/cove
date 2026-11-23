@@ -52,7 +52,31 @@ final class PlayerUI: ObservableObject {
     @Published var controlsVisible = true
     private(set) var lastActivity = Date()
     @Published var showQueue = false
-    @Published var filter: LibraryFilter = .all { didSet { if filter != oldValue { recomputeVisibleItems() } } }
+    /// Which chip is selected is remembered, so the Player opens on the playlist (or All, Audio, Video) it was left on.
+    @Published var filter: LibraryFilter = .all {
+        didSet {
+            guard filter != oldValue else { return }
+            UserDefaults.standard.set(Self.filterKey(filter), forKey: "player.filter")
+            recomputeVisibleItems()
+        }
+    }
+    private static func filterKey(_ filter: LibraryFilter) -> String {
+        switch filter {
+        case .all: return "all"
+        case .audio: return "audio"
+        case .video: return "video"
+        case .playlist(let id): return "playlist:" + id.uuidString
+        }
+    }
+    private static func savedFilter() -> LibraryFilter {
+        switch UserDefaults.standard.string(forKey: "player.filter") ?? "all" {
+        case "audio": return .audio
+        case "video": return .video
+        case let key where key.hasPrefix("playlist:"):
+            return UUID(uuidString: String(key.dropFirst(9))).map(LibraryFilter.playlist) ?? .all
+        default: return .all
+        }
+    }
     @Published var search = "" { didSet { if search != oldValue { recomputeVisibleItems() } } }
     @Published var selection: Set<UUID> = []
     @Published var naming: Naming?
@@ -76,6 +100,8 @@ final class PlayerUI: ObservableObject {
         self.library = library
         self.now = PlayerNowPlaying(engine: engine)
         sort = LibrarySort(rawValue: UserDefaults.standard.string(forKey: PlayerSettingsKey.sort) ?? "") ?? .recentlyAdded
+        filter = Self.savedFilter()
+        if case .playlist(let id) = filter, !library.playlists.contains(where: { $0.id == id }) { filter = .all }
         UserDefaults.standard.register(defaults: [PlayerSettingsKey.resume: true, PlayerSettingsKey.miniBar: true,
                                                   PlayerSettingsKey.videoPlacement: "notch", PlayerSettingsKey.floatOnTop: true])
         // The list follows the library (items added, removed, edited, a playlist changed). A publisher fires before the value

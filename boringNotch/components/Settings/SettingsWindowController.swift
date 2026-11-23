@@ -60,7 +60,7 @@ class SettingsWindowController: NSWindowController {
         
         // Create the SwiftUI content
         let settingsView = SettingsView(updaterController: updaterController)
-        let hostingView = NSHostingView(rootView: settingsView)
+        let hostingView = NSHostingView(rootView: settingsView.coveAccent())
         // The window keeps its own size; a long page (Agents) scrolls inside it instead of stretching the window
         // to the content's full height, which ran off the bottom of the screen.
         hostingView.sizingOptions = []

@@ -20,6 +20,8 @@ final class PhotoLibrary: ObservableObject {
     #endif
 
     @Published private(set) var albums: [Album] = []
+    /// The album list has been read from the database at least once (before that, an empty list means nothing).
+    private(set) var summaryLoaded = false
     @Published private(set) var photoCount = 0
     @Published private(set) var missingCount = 0
     @Published private(set) var importProgress: (done: Int, total: Int)?
@@ -63,7 +65,7 @@ final class PhotoLibrary: ObservableObject {
     func reloadSummary() async {
         guard let store else { return }
         if let counts = try? await store.counts() { photoCount = counts.photos; missingCount = counts.missing }
-        if let list = try? await store.albums() { albums = list }
+        if let list = try? await store.albums() { albums = list; summaryLoaded = true }
     }
 
     private func changed() async {

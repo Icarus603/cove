@@ -169,11 +169,13 @@ private struct LibraryPane: View {
     @ObservedObject private var ui = PlayerUI.shared
     @ObservedObject private var now = PlayerUI.shared.now
     @State private var namingText = ""
+    /// The playlist waiting for a yes before it is deleted.
+    @State private var confirmingDelete: UUID?
 
     var body: some View {
         VStack(spacing: 6) {
             searchRow
-            if let pid = ui.pickingFor { pickerHeader(pid) } else if ui.naming != nil { namingRow } else if !ui.selection.isEmpty && !ui.showQueue { selectionBar } else { chipRow }
+            if let pid = ui.pickingFor { pickerHeader(pid) } else if let id = confirmingDelete, let list = library.playlists.first(where: { $0.id == id }) { deleteRow(list) } else if ui.naming != nil { namingRow } else if !ui.selection.isEmpty && !ui.showQueue { selectionBar } else { chipRow }
             if let progress = library.importProgress { importRow(progress) }
             content
             if let summary = library.lastSummary { ImportReportBar(report: summary.report, compact: true) { library.lastSummary = nil } }
@@ -201,17 +203,58 @@ private struct LibraryPane: View {
     }
 
     private var chipRow: some View {
-        HStack(spacing: 5) {
-            chip("All", count: library.items.count, selected: ui.filter == .all) { ui.filter = .all }
-            chip("Audio", count: library.items.filter { $0.kind == .audio }.count, selected: ui.filter == .audio) { ui.filter = .audio }
-            chip("Video", count: library.items.filter { $0.kind == .video }.count, selected: ui.filter == .video) { ui.filter = .video }
-            playlistMenu
-            Spacer(minLength: 0)
+        HStack(spacing: 6) {
+            // All, Audio, Video and then every playlist, in one row that slides sideways when there are more than fit.
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 5) {
+                        chip(Text("All"), selected: ui.filter == .all) { ui.filter = .all }.id("all")
+                        chip(Text("Audio"), selected: ui.filter == .audio) { ui.filter = .audio }.id("audio")
+                        chip(Text("Video"), selected: ui.filter == .video) { ui.filter = .video }.id("video")
+                        ForEach(library.playlists) { playlist in
+                            chip(Text(verbatim: playlist.name), symbol: "play.square.stack", selected: ui.filter == .playlist(playlist.id)) {
+                                ui.filter = .playlist(playlist.id)
+                            }
+                            .id(playlist.id)
+                        }
+                    }
+                    .padding(.trailing, 14)
+                }
+                .mask(
+                    HStack(spacing: 0) {
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 14)
+                    }
+                )
+                .onAppear {
+                    // Open with the remembered chip in view, not with the row back at its start.
+                    if case .playlist(let id) = ui.filter {
+                        if library.playlists.contains(where: { $0.id == id }) { proxy.scrollTo(id, anchor: .center) } else { ui.filter = .all }
+                    }
+                }
+                .onChange(of: ui.filter) { _, filter in
+                    if case .playlist(let id) = filter { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .center) } }
+                }
+            }
             if case .playlist(let id) = ui.filter {
                 PlayerIconButton(symbol: "plus.circle", size: 11, help: "Add video or audio") { ui.pickingFor = id }
                 PlayerIconButton(symbol: "pencil", size: 10, help: "Rename playlist") { namingText = library.playlists.first { $0.id == id }?.name ?? ""; ui.naming = .rename(id) }
-                PlayerIconButton(symbol: "trash", size: 10, help: "Delete playlist") { library.deletePlaylist(id); ui.filter = .all }
+                PlayerIconButton(symbol: "trash", size: 10, help: "Delete playlist") { confirmingDelete = id }
             }
+            // A plus with the word beside it, so what it makes is plain without waiting for a tooltip.
+            Button { namingText = ""; ui.naming = .new(items: []) } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "plus").font(.system(size: 9, weight: .bold))
+                    Text("Playlists")
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .padding(.horizontal, 8).frame(height: 20)
+                .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1))
+                .foregroundStyle(Color.white.opacity(0.85))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help(Text("New playlist…"))
             manageMenu
             sortMenu
             PlayerIconButton(symbol: "list.bullet.rectangle", size: 11, active: ui.showQueue, help: "Up next") { ui.showQueue.toggle() }
@@ -219,43 +262,20 @@ private struct LibraryPane: View {
         .frame(height: 24)
     }
 
-    private func chip(_ title: LocalizedStringKey, count: Int, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func chip(_ title: Text, symbol: String? = nil, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 3) {
-                Text(title)
-                Text("\(count)").foregroundStyle(selected ? Color.black.opacity(0.55) : Color.secondary)
+                if let symbol { Image(systemName: symbol).font(.system(size: 9)) }
+                title.lineLimit(1)
             }
             .font(.system(size: 10, weight: .semibold))
             .padding(.horizontal, 8).padding(.vertical, 3)
+            .frame(maxWidth: 130)
+            .fixedSize()
             .background(Capsule().fill(selected && !ui.showQueue ? Color.white.opacity(0.92) : Color.white.opacity(0.1)))
             .foregroundStyle(selected && !ui.showQueue ? Color.black : Color.white.opacity(0.85))
         }
         .buttonStyle(.plain)
-    }
-
-    private var playlistMenu: some View {
-        let selectedName: String? = { if case .playlist(let id) = ui.filter { return library.playlists.first { $0.id == id }?.name } else { return nil } }()
-        return Menu {
-            Button { namingText = ""; ui.naming = .new(items: []) } label: { Label("New playlist…", systemImage: "plus") }
-            if !library.playlists.isEmpty { Divider() }
-            ForEach(library.playlists) { playlist in
-                Button { ui.filter = .playlist(playlist.id) } label: {
-                    if ui.filter == .playlist(playlist.id) { Label("\(playlist.name) (\(playlist.itemIDs.count))", systemImage: "checkmark") }
-                    else { Text("\(playlist.name) (\(playlist.itemIDs.count))") }
-                }
-            }
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "play.square.stack").font(.system(size: 9))
-                Text(selectedName ?? String(localized: "Playlists")).lineLimit(1)
-            }
-            .font(.system(size: 10, weight: .semibold))
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(Capsule().fill(selectedName != nil && !ui.showQueue ? Color.white.opacity(0.92) : Color.white.opacity(0.1)))
-            .foregroundStyle(selectedName != nil && !ui.showQueue ? Color.black : Color.white.opacity(0.85))
-        }
-        // A borderless menu draws its label in the system font and ignores .font; a plain button style keeps the chip's own type.
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
     }
 
     /// The way into the library window, where bulk work is done.
@@ -364,6 +384,33 @@ private struct LibraryPane: View {
             .background(Capsule().fill(Color.white.opacity(0.12))).foregroundStyle(Color.white.opacity(0.9))
         }
         .buttonStyle(.plain)
+    }
+
+    /// Asked in the row itself (a system dialog does not belong in the notch). The media in the playlist stay in the library.
+    private func deleteRow(_ list: Playlist) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "trash").font(.system(size: 10)).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Delete the playlist “\(list.name)”?").font(.system(size: 11, weight: .semibold)).lineLimit(1)
+                Text("The video and audio stay in your library.").font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            Button { confirmingDelete = nil } label: {
+                Text("Cancel").font(.system(size: 11, weight: .semibold)).padding(.horizontal, 12).frame(height: 24)
+                    .background(Capsule().fill(Color.white.opacity(0.12))).foregroundStyle(Color.white.opacity(0.9))
+            }
+            .buttonStyle(.plain)
+            Button {
+                library.deletePlaylist(list.id)
+                if ui.filter == .playlist(list.id) { ui.filter = .all }
+                confirmingDelete = nil
+            } label: {
+                Text("Delete Playlist").font(.system(size: 11, weight: .semibold)).padding(.horizontal, 12).frame(height: 24)
+                    .background(Capsule().fill(Color.red.opacity(0.9))).foregroundStyle(Color.white)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(height: 28)
     }
 
     private var namingRow: some View {

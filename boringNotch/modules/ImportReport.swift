@@ -245,7 +245,7 @@ final class ImportReportWindowController: NSObject, NSWindowDelegate {
             window.title = String(localized: "Files not added")
             window.isReleasedWhenClosed = false
             window.contentMinSize = NSSize(width: 460, height: 320)
-            let hosting = NSHostingController(rootView: view)
+            let hosting = NSHostingController(rootView: view.coveAccent())
             hosting.sizingOptions = []
             window.contentViewController = hosting
             window.delegate = self

@@ -41,7 +41,7 @@ final class FloatingPlayerController: NSObject, NSWindowDelegate {
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.fullScreenPrimary, .managed]
         panel.minSize = NSSize(width: 320, height: 180)
-        panel.contentView = NSHostingView(rootView: FloatingPlayerView())
+        panel.contentView = NSHostingView(rootView: FloatingPlayerView().coveAccent())
         panel.delegate = self
         if !panel.setFrameUsingName("CovePlayerWindow") { panel.center() }
         panel.setFrameAutosaveName("CovePlayerWindow")

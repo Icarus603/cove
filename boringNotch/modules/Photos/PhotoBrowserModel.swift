@@ -15,7 +15,7 @@ import SwiftUI
 final class PhotoBrowserModel: ObservableObject {
     let library: PhotoLibrary
 
-    @Published var scope: PhotoScope = .all { didSet { if oldValue != scope { selection = []; reload() } } }
+    @Published var scope: PhotoScope = PhotoScope.saved { didSet { if oldValue != scope { PhotoScope.saved = scope; selection = []; reload() } } }
     @Published var search = "" { didSet { if oldValue != search { scheduleReload() } } }
     @Published var sort: PhotoSort { didSet { UserDefaults.standard.set(sort.rawValue, forKey: Self.sortKey); reload() } }
     /// Inside an album the photos are in the order the user arranged, unless another order is picked here.
@@ -93,6 +93,7 @@ final class PhotoBrowserModel: ObservableObject {
             guard !Task.isCancelled else { return }
             ids = new
             isLoading = false
+            if case .album(let id) = scope, library.summaryLoaded, !library.albums.contains(where: { $0.id == id }) { scope = .all }
             selection.formIntersection(Set(new))
             if let open = viewing, !new.contains(open), editing == nil { viewing = nil; stopSlideshow() }
         }

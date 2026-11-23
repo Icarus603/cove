@@ -34,6 +34,19 @@ struct Album: Identifiable, Hashable {
 enum PhotoScope: Hashable {
     case all
     case album(Int64)
+
+    /// The album (or All Photos) the user was last looking at, so the tab and the window open where they were left.
+    private static let key = "photos.scope"
+    static var saved: PhotoScope {
+        get {
+            let id = UserDefaults.standard.object(forKey: key) as? Int
+            return id.map { PhotoScope.album(Int64($0)) } ?? .all
+        }
+        set {
+            if case .album(let id) = newValue { UserDefaults.standard.set(Int(id), forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+    }
 }
 
 enum PhotoSort: String, CaseIterable, Identifiable {

@@ -49,7 +49,7 @@ final class PhotoWindowController: NSObject, NSWindowDelegate {
             // The title bar is see-through so an open photo can run right up to the top edge, as a video does.
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
-            let hosting = NSHostingController(rootView: PhotoWindowView())
+            let hosting = NSHostingController(rootView: PhotoWindowView().coveAccent())
             hosting.sizingOptions = []
             window.contentViewController = hosting
             window.delegate = self
