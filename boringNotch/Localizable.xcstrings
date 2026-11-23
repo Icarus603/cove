@@ -25772,35 +25772,6 @@
         }
       }
     },
-    "Built on open source: Boring.Notch (GPL-3.0), CodeIsland and NotchBasket (MIT)." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Built on open source: Boring.Notch (GPL-3.0), CodeIsland, and NotchBasket (MIT)."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "基于开源项目：Boring.Notch（GPL-3.0）、CodeIsland、与 NotchBasket（MIT）。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "基於開源專案：Boring.Notch（GPL-3.0）、CodeIsland、與 NotchBasket（MIT）。"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "オープンソース（Boring.Notch〈GPL-3.0〉、CodeIsland、NotchBasket〈MIT〉）をベースにしています。"
-          }
-        }
-      }
-    },
     "Both" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -33751,6 +33722,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "显示相册列表"
+          }
+        }
+      }
+    },
+    "Built on open source: Boring.Notch (GPL-3.0) and CodeIsland (MIT)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Built on open source: Boring.Notch (GPL-3.0) and CodeIsland (MIT)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "基于开源项目：Boring.Notch（GPL-3.0）与 CodeIsland（MIT）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "基於開源專案：Boring.Notch（GPL-3.0）與 CodeIsland（MIT）。"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オープンソース（Boring.Notch〈GPL-3.0〉、CodeIsland〈MIT〉）をベースにしています。"
           }
         }
       }

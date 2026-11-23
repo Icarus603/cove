@@ -886,7 +886,7 @@ struct About: View {
             }
             VStack(spacing: 0) {
                 Divider()
-                Text("Built on open source: Boring.Notch (GPL-3.0), CodeIsland and NotchBasket (MIT).")
+                Text("Built on open source: Boring.Notch (GPL-3.0) and CodeIsland (MIT).")
                     .foregroundStyle(.secondary)
                     .padding(.top, 5)
                     .padding(.bottom, 7)

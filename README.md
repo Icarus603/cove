@@ -223,8 +223,7 @@ each release.
 
 ## License
 
-[GPL-3.0](LICENSE). Includes MIT-licensed code from CodeIsland, NotchGames and NotchBasket; their notices are in
-`Packages/*/LICENSE-*`.
+[GPL-3.0](LICENSE). Includes MIT-licensed code from CodeIsland; its notice is in `Packages/AgentHub/LICENSE-CodeIsland`.
 
 ## Credits
 

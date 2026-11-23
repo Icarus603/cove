@@ -184,7 +184,7 @@ gh release create v1.0.0 build/Cove.dmg build/appcast.xml --title "Cove 1.0.0"
 
 ## 许可证
 
-[GPL-3.0](LICENSE)。包含来自 CodeIsland、NotchGames 和 NotchBasket 的 MIT 许可证代码，它们的许可证声明在 `Packages/*/LICENSE-*`。
+[GPL-3.0](LICENSE)。包含来自 CodeIsland 的 MIT 许可证代码，许可证声明在 `Packages/AgentHub/LICENSE-CodeIsland`。
 
 ## 致谢
 
