@@ -73,7 +73,7 @@ struct PhotoEditorView: View {
                     Spacer()
                     if session.loadState == .ready { sizeLabel }
                 }
-                .padding(.leading, 86).padding(.trailing, 16).padding(.top, 8)
+                .padding(.leading, 86).padding(.trailing, 16).padding(.top, 9)   // clear of the window buttons, on their line
                 Spacer()
                 if session.loadState == .ready && session.params.hasAdjustmentChange { compareButton.padding(.bottom, 16) }
             }

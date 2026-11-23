@@ -22,7 +22,7 @@ struct PhotoSidebar: View {
 
     var body: some View {
         List {
-            Section {
+            Section("Library") {
                 AccentSidebarRow(selected: model.scope == .all, action: { model.scope = .all }) {
                     SidebarRowLabel(title: String(localized: "All Photos"), symbol: "photo.on.rectangle", count: library.photoCount, selected: model.scope == .all)
                 }

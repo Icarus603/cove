@@ -38,17 +38,22 @@ final class PhotoWindowController: NSObject, NSWindowDelegate {
     func show(scope: PhotoScope = .all, photo: Int64? = nil) {
         pending = (scope, photo)
         if window == nil {
+            // Built once and never changed afterwards, so the window buttons are always in the one standard place: an empty toolbar
+            // gives the title bar the height of the other Cove windows, the title bar is see-through so a photo can run to the top
+            // edge, and the sidebar is laid out by hand (a system split view would put its own button in that toolbar).
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 760),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                                   backing: .buffered, defer: false)
+            window.titlebarAppearsTransparent = true
+            let toolbar = NSToolbar(identifier: "CovePhotoToolbar")
+            toolbar.showsBaselineSeparator = false
+            window.toolbar = toolbar
+            window.toolbarStyle = .unified
             window.title = String(localized: "Photos")
             window.isReleasedWhenClosed = false
             window.minSize = NSSize(width: 820, height: 520)
             window.collectionBehavior = [.managed, .participatesInCycle, .fullScreenPrimary]
             window.identifier = NSUserInterfaceItemIdentifier("CovePhotoWindow")
-            // The title bar is see-through so an open photo can run right up to the top edge, as a video does.
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
             let hosting = NSHostingController(rootView: PhotoWindowView().coveAccent())
             hosting.sizingOptions = []
             window.contentViewController = hosting
@@ -64,6 +69,48 @@ final class PhotoWindowController: NSObject, NSWindowDelegate {
     }
 
     func toggleFullScreen() { window?.toggleFullScreen(nil) }
+
+    // Full screen has no window buttons, and an empty toolbar would show as a blank strip across the top, so it is hidden before the
+    // window starts to grow. Hiding it moves the window buttons to the corner (measured: 19 pt becomes 9 pt), so they are made
+    // invisible first and only shown again once the toolbar is back and they are in their one place. Nothing wrong is ever on screen.
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        setButtonsVisible(false)
+        window?.toolbar?.isVisible = false
+    }
+
+    func windowWillExitFullScreen(_ notification: Notification) {
+        // The system hands the buttons back to the window as it starts to shrink; they are made invisible again from the first
+        // moment (and again a turn and a moment later, in case it hands them over late).
+        setButtonsVisible(false)
+        window?.toolbar?.isVisible = true
+        DispatchQueue.main.async { [weak self] in self?.setButtonsVisible(false) }
+        for delay in [0.05, 0.15, 0.3] { DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.setButtonsVisible(false) } }
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        window?.toolbar?.isVisible = true
+        restoreToolbar()
+        // One turn later, when the title bar has laid itself out.
+        DispatchQueue.main.async { [weak self] in
+            self?.restoreToolbar()
+            self?.setButtonsVisible(true)
+        }
+    }
+
+    private func setButtonsVisible(_ visible: Bool) {
+        guard let window else { return }
+        for type in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            window.standardWindowButton(type)?.alphaValue = visible ? 1 : 0
+        }
+    }
+
+    private func restoreToolbar() {
+        guard let window, let toolbar = window.toolbar else { return }
+        window.toolbar = nil
+        window.toolbar = toolbar
+        toolbar.isVisible = true
+        window.toolbarStyle = .unified
+    }
 
     func consumePending() -> (scope: PhotoScope, photo: Int64?)? {
         defer { pending = nil }
@@ -116,21 +163,19 @@ struct PhotoWindowView: View {
     @StateObject private var model = PhotoBrowserModel()
     @ObservedObject private var library = PhotoLibrary.shared
     @State private var confirmRemove = false
-    /// The album list is out of the way until asked for (the button in the title bar); the choice is remembered.
-    @AppStorage("photos.sidebarVisible") private var sidebarVisible = false
 
     var body: some View {
-        // The sidebar is laid out by hand rather than with a system split view: that one puts its own button in the title bar,
-        // and it could not be taken off an open photo.
+        // The same skeleton as the Player library window: a sidebar that is always there, and beside it a header (title, count,
+        // search, Add), an action bar that is always on screen, the content, and a footer.
         HStack(spacing: 0) {
-            if sidebarVisible {
-                PhotoSidebar(model: model)
-                    .frame(width: 220)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                Divider()
-            }
+            PhotoSidebar(model: model)
+                .frame(width: 220)
+                .background(VisualEffectView(material: .sidebar, blendingMode: .behindWindow).ignoresSafeArea())
+            Divider()
             VStack(spacing: 0) {
-                toolbar
+                header
+                Divider()
+                actionBar
                 Divider()
                 ZStack(alignment: .bottom) {
                     content
@@ -141,14 +186,19 @@ struct PhotoWindowView: View {
                     }
                     .padding(10)
                 }
+                Divider()
+                footer
             }
         }
-        // An open photo covers the whole window, sidebar and toolbar included: it is a picture, not a page with a picture on it.
+        // An open photo covers the whole window, sidebar and title bar included: it is a picture, not a page with a picture on it.
         .overlay {
             if model.viewing != nil { PhotoViewer(model: model).ignoresSafeArea().transition(.opacity) }
         }
         .overlay {
             if let id = model.editing { PhotoEditorHost(model: model, photoID: id).ignoresSafeArea().transition(.opacity) }
+        }
+        .onChange(of: model.viewing) { _, viewing in
+            PhotoWindowController.shared.window?.titleVisibility = viewing == nil ? .visible : .hidden
         }
         .animation(.easeInOut(duration: 0.15), value: model.viewing)
         .animation(.easeInOut(duration: 0.15), value: model.editing)
@@ -185,28 +235,36 @@ struct PhotoWindowView: View {
 
     // MARK: Toolbar
 
-    /// The bar that is always there, and under it, only while photos are selected, the bar for what can be done with them. They
-    /// are two rows so neither can outgrow the window (one row with everything on it did, and broke the layout).
-    private var toolbar: some View {
-        VStack(spacing: 0) {
-            mainBar
-            if !model.selection.isEmpty {
-                Divider()
-                selectionBar
-            }
-        }
-    }
-
-    private var mainBar: some View {
-        HStack(alignment: .center, spacing: 8) {
-            ToolbarIconButton(symbol: "sidebar.left", help: sidebarVisible ? "Hide albums" : "Show albums") { withAnimation(.easeInOut(duration: 0.15)) { sidebarVisible.toggle() } }
+    private var header: some View {
+        HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(model.title).font(.system(size: 15, weight: .bold)).lineLimit(1)
+                Text(model.title).font(.system(size: 17, weight: .bold)).lineLimit(1)
                 Text(String(localized: "\(model.ids.count) photos")).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
-            .layoutPriority(0)
+            Spacer()
+            ToolbarSearchField(text: $model.search, width: 210)
+            ToolbarPillButton(title: "Add", symbol: "plus", prominent: true) { PhotoActions.chooseFilesToAdd() }
+                .help(Text("Add photos or folders"))
+                .fixedSize()
+        }
+        .frame(height: ToolbarMetrics.height + 8)
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+
+    /// Always on screen, so what can be done with a selection is never a secret. The view controls (size, order, slideshow) sit
+    /// at its right end.
+    private var actionBar: some View {
+        HStack(alignment: .center, spacing: 8) {
+            ToolbarPillButton(title: model.selection.count == model.ids.count && !model.ids.isEmpty ? "Deselect All" : "Select All") {
+                if model.selection.count == model.ids.count { model.clearSelection() } else { model.selectAll() }
+            }
+            .fixedSize()
+            .disabled(model.ids.isEmpty)
+            Text(model.selection.isEmpty ? String(localized: "Nothing selected") : String(localized: "\(model.selection.count) of \(model.ids.count) selected"))
+                .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
             Spacer(minLength: 8)
-            ToolbarSearchField(text: $model.search, width: 150)
+            selectionActions.disabled(model.selection.isEmpty)
+            Divider().frame(height: 16)
             HStack(spacing: 5) {
                 Image(systemName: "square.grid.3x3").font(.system(size: 10)).foregroundStyle(.secondary)
                 Slider(value: $model.thumbSize, in: 80...320).frame(width: 80).controlSize(.mini)
@@ -223,27 +281,23 @@ struct PhotoWindowView: View {
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().help(Text("Sort"))
             ToolbarIconButton(symbol: "play.rectangle", help: "Slideshow") { model.startSlideshow() }
                 .disabled(model.ids.isEmpty)
-            ToolbarPillButton(title: "Add", symbol: "plus", prominent: true) { PhotoActions.chooseFilesToAdd() }
-                .help(Text("Add photos or folders"))
-                .fixedSize()
-        }
-        .frame(height: ToolbarMetrics.height + 6)
-        .padding(.horizontal, 14).padding(.vertical, 9)
-    }
-
-    private var selectionBar: some View {
-        HStack(alignment: .center, spacing: 8) {
-            ToolbarPillButton(title: model.selection.count == model.ids.count ? "Deselect All" : "Select All") {
-                if model.selection.count == model.ids.count { model.clearSelection() } else { model.selectAll() }
-            }
-            .fixedSize()
-            Text(String(localized: "\(model.selection.count) selected")).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-            Spacer(minLength: 8)
-            selectionActions
         }
         .frame(height: ToolbarMetrics.height + 4)
-        .padding(.horizontal, 14).padding(.vertical, 6)
+        .padding(.horizontal, 16).padding(.vertical, 6)
         .background(Color.secondary.opacity(0.06))
+    }
+
+    private var footer: some View {
+        HStack {
+            Text(String(localized: "\(library.photoCount) photos in the library"))
+                .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            Spacer()
+            if library.missingCount > 0 {
+                Label(String(localized: "\(library.missingCount) files missing"), systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(Color.coveWarning)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 7)
     }
 
     private var selectionActions: some View {

@@ -2,7 +2,7 @@
 //  PhotoViewer.swift
 //  boringNotch
 //
-//  One photo at a time, filling the window: arrows and swipes move through the list, pinch / + / − zoom, a drag pans a
+//  One photo at a time, filling the window: arrows move through the list, pinch / + / − zoom, a drag pans a
 //  zoomed photo, double-click goes between "fit" and actual size. An info panel, a slideshow and full screen. A GIF plays.
 //
 
@@ -72,8 +72,6 @@ struct PhotoViewer: View {
     @State private var showInfo = false
     @State private var albumNames: [String] = []
     @State private var container: CGSize = .zero
-    @State private var swipeAccumulator: CGFloat = 0
-    @State private var lastSwipe = Date.distantPast
     @State private var lastPoint: CGPoint?
     @FocusState private var focused: Bool
 
@@ -108,6 +106,7 @@ struct PhotoViewer: View {
 
             if showInfo, let photo { infoPanel(photo).transition(.move(edge: .trailing)) }
         }
+        .environment(\.colorScheme, .dark)
         .animation(.easeInOut(duration: 0.2), value: model.chromeVisible)
         .animation(.easeInOut(duration: 0.2), value: showInfo)
         .focusable()
@@ -230,22 +229,11 @@ struct PhotoViewer: View {
         if scale > 1.01 { zoom(to: 1) } else { zoom(to: max(1 / max(fitFactor, 0.001), 2)) }
     }
 
-    /// Plain scrolling pans a zoomed photo; at fit size a swipe (or the wheel) moves to the next or previous one.
+    /// Two-finger scrolling pans a zoomed photo and does nothing at fit size: it never changes the photo (that is for the arrows, the
+    /// keys and the buttons).
     private func handleScroll(dx: CGFloat, dy: CGFloat) {
-        guard model.editing == nil else { return }
-        if scale > 1.01 {
-            offset = CGSize(width: offset.width + dx, height: offset.height + dy)
-            return
-        }
-        swipeAccumulator += abs(dx) > abs(dy) ? -dx : -dy
-        if abs(swipeAccumulator) > 60, Date().timeIntervalSince(lastSwipe) > 0.3 {
-            model.step(swipeAccumulator > 0 ? 1 : -1)
-            model.restartSlideshowTimer()
-            swipeAccumulator = 0
-            lastSwipe = Date()
-        } else if Date().timeIntervalSince(lastSwipe) > 0.6 {
-            swipeAccumulator = 0
-        }
+        guard model.editing == nil, scale > 1.01 else { return }
+        offset = CGSize(width: offset.width + dx, height: offset.height + dy)
     }
 
     // MARK: Keys
@@ -275,30 +263,11 @@ struct PhotoViewer: View {
 
     // MARK: Controls
 
-    /// Three small groups floating over the picture, no bar: close on the left, where you are in the middle, the few things
-    /// worth having on the right. Everything else (zoom, slideshow, next and previous) is a gesture or a key.
+    /// Floating over the picture, no bar, so the picture keeps the whole window: the few things worth having on the right,
+    /// level with the window buttons (their middle is 23 pt from the top, as 9 + 14 is). Everything else (zoom, slideshow, next and previous) is a gesture or a key.
     private var topBar: some View {
         HStack(alignment: .center, spacing: 10) {
-            floating { iconButton("xmark", help: "Close") { model.closeViewer() } }
-            Spacer()
-            if let index = model.viewingIndex {
-                floating {
-                    Text("\(index + 1) / \(model.ids.count)").font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.85)).padding(.horizontal, 10).frame(height: 28)
-                }
-            }
-            Spacer()
-            Button { if let id = model.viewing { model.edit(id) } } label: {
-                Label("Edit", systemImage: "slider.horizontal.3")
-                    .font(.system(size: 12, weight: .semibold)).padding(.horizontal, 12).frame(height: 28)
-                    .background(Capsule().fill(Color.white.opacity(0.92)))
-                    .foregroundStyle(Color.black)
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .opacity(canEdit ? 1 : 0.35)
-            .disabled(!canEdit)
-            .help(Text(isGIF ? "Animated GIFs cannot be edited" : "Edit this photo (E)"))
+            Spacer(minLength: 0)
             floating {
                 HStack(spacing: 0) {
                     Menu {
@@ -307,14 +276,22 @@ struct PhotoViewer: View {
                         ForEach(library.albums) { album in
                             Button(album.name) { model.addToAlbum(album.id, photos: viewingTargets); if let id = model.viewing { refreshAlbumNames(for: id) } }
                         }
-                    } label: { Image(systemName: "rectangle.stack.badge.plus").font(.system(size: 13, weight: .medium)).foregroundStyle(.white).frame(width: 28, height: 28).contentShape(Rectangle()) }
-                        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().help(Text("Add to album"))
+                    } label: {
+                        Image(systemName: "rectangle.stack.badge.plus").font(.system(size: 13)).foregroundStyle(.white.opacity(0.9))
+                            .frame(width: ToolbarMetrics.height, height: ToolbarMetrics.height).contentShape(Rectangle())
+                    }
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().help(Text("Add to album"))
                     iconButton("info.circle", help: "Info", active: showInfo) { showInfo.toggle() }
                     iconButton("arrow.up.left.and.arrow.down.right", help: "Full screen") { PhotoWindowController.shared.toggleFullScreen() }
                 }
             }
+            ToolbarPillButton(title: "Edit", symbol: "slider.horizontal.3", prominent: true) { if let id = model.viewing { model.edit(id) } }
+                .opacity(canEdit ? 1 : 0.35)
+                .disabled(!canEdit)
+                .help(Text(isGIF ? "Animated GIFs cannot be edited" : "Edit this photo (E)"))
         }
-        .padding(.leading, 86).padding(.trailing, 14).padding(.top, 8)   // clear of the window's own buttons
+        .frame(height: ToolbarMetrics.height)
+        .padding(.horizontal, 16).padding(.top, 9)
     }
 
     private func floating<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -329,7 +306,7 @@ struct PhotoViewer: View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: 13, weight: .medium))
                 .foregroundStyle(active ? Color.effectiveAccent : .white)
-                .frame(width: 28, height: 28).contentShape(Rectangle())
+                .frame(width: ToolbarMetrics.height, height: ToolbarMetrics.height).contentShape(Rectangle())
         }
         .buttonStyle(.plain).help(Text(help))
     }

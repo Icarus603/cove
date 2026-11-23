@@ -16,6 +16,9 @@ struct PhotoCell: View {
     @State private var photo: Photo?
     @State private var image: NSImage?
 
+    /// Rounded like the thumbnails in the notch, a little less so as they get small.
+    static func corner(for size: CGFloat) -> CGFloat { min(10, max(4, size * 0.07)) }
+
     var body: some View {
         ZStack {
             Rectangle().fill(Color.secondary.opacity(0.12))
@@ -29,11 +32,11 @@ struct PhotoCell: View {
             }
         }
         .frame(width: size, height: size)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: Self.corner(for: size), style: .continuous))
         .overlay {
             if isSelected {
-                Rectangle().strokeBorder(Color.effectiveAccent, lineWidth: 3)
-                Rectangle().fill(Color.effectiveAccent.opacity(0.18))
+                RoundedRectangle(cornerRadius: Self.corner(for: size), style: .continuous).fill(Color.effectiveAccent.opacity(0.18))
+                RoundedRectangle(cornerRadius: Self.corner(for: size), style: .continuous).strokeBorder(Color.effectiveAccent, lineWidth: 3)
             }
         }
         .overlay(alignment: .bottomTrailing) {
@@ -61,9 +64,10 @@ struct PhotoGridView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let spacing: CGFloat = 2
-            let columns = max(Int((geo.size.width + spacing) / (model.thumbSize + spacing)), 1)
-            let cell = (geo.size.width - spacing * CGFloat(columns - 1)) / CGFloat(columns)
+            let spacing: CGFloat = 8, inset: CGFloat = 14
+            let usable = max(geo.size.width - inset * 2, 1)
+            let columns = max(Int((usable + spacing) / (model.thumbSize + spacing)), 1)
+            let cell = (usable - spacing * CGFloat(columns - 1)) / CGFloat(columns)
             ScrollView {
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(cell), spacing: spacing), count: columns), spacing: spacing) {
                     ForEach(model.ids, id: \.self) { id in
@@ -76,7 +80,7 @@ struct PhotoGridView: View {
                             .draggable(dragString(for: id))
                             // In an album with its own order, a photo dropped on another goes in front of it.
                             .overlay(alignment: .leading) {
-                                if dropTarget == id { Rectangle().fill(Color.effectiveAccent).frame(width: 3) }
+                                if dropTarget == id { Capsule().fill(Color.effectiveAccent).frame(width: 3).offset(x: -spacing / 2 - 1.5) }
                             }
                             .dropDestination(for: String.self) { items, _ in
                                 drop(items, before: id)
@@ -86,6 +90,7 @@ struct PhotoGridView: View {
                             .contextMenu { PhotoMenu(model: model, id: id) }
                     }
                 }
+                .padding(.horizontal, inset).padding(.vertical, 12)
             }
             // A click on empty space clears the selection.
             .background(Color.clear.contentShape(Rectangle()).onTapGesture { model.clearSelection() })
