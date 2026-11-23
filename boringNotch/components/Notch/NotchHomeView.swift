@@ -29,17 +29,22 @@ struct MusicPlayerView: View {
 struct SquareArtwork: View {
     let image: NSImage
 
-    private var isSquare: Bool { !Self.isWide(image) }
+    private var isSquare: Bool {
+        guard image.size.width > 0, image.size.height > 0 else { return true }
+        return abs(image.size.width / image.size.height - 1) < 0.04
+    }
 
     /// How a wide picture sits in the closed notch's cover slot, for a thumbnail here and for a playing video in the Player's
     /// mini bar alike: a little smaller than the slot, pushed toward the notch so it has room on its outer side.
     static let wideInset: CGFloat = 2
     static let wideShift: CGFloat = 4
 
-    /// Wider (or taller) than a square cover by more than a few percent: a YouTube thumbnail, a video frame.
+    /// Clearly a rectangle (a YouTube thumbnail is 16:9, a video frame 4:3 or wider): at least a fifth longer one way. Anything
+    /// near square, a Spotify or Apple Music cover included, is not, and keeps its place and size exactly.
     static func isWide(_ image: NSImage) -> Bool {
         guard image.size.width > 0, image.size.height > 0 else { return false }
-        return abs(image.size.width / image.size.height - 1) >= 0.04
+        let ratio = image.size.width / image.size.height
+        return ratio >= 1.2 || ratio <= 1 / 1.2
     }
 
     var body: some View {

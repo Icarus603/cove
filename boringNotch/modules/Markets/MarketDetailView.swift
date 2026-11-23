@@ -211,16 +211,25 @@ struct MarketDetailView: View {
     private var readout: some View {
         let candle = hover.flatMap { detail.candles.indices.contains($0) ? detail.candles[$0] : nil }
             ?? (detail.candles.indices.contains(endIndex) ? detail.candles[endIndex] : nil)
-        return Group {
-            if let c = candle {
-                Text("O \(MarketsFormat.price(c.open))  H \(MarketsFormat.price(c.high))  L \(MarketsFormat.price(c.low))  C \(MarketsFormat.price(c.close))  V \(MarketsFormat.compact(c.volume))")
-            } else {
-                Text(" ")
+        // The numbers change with every candle the pointer passes over, and so does how wide the text wants to be. This column is
+        // tight, so a width that moved with the digits moved everything beside it (the interval picker at the top right swung
+        // left and right as the pointer crossed the chart). The text is therefore an overlay on a row of fixed height that takes
+        // whatever width the column has, and has no say in it.
+        return Color.clear
+            .frame(maxWidth: .infinity, minHeight: 11, maxHeight: 11)
+            .overlay(alignment: .leading) {
+                Group {
+                    if let c = candle {
+                        Text("O \(MarketsFormat.price(c.open))  H \(MarketsFormat.price(c.high))  L \(MarketsFormat.price(c.low))  C \(MarketsFormat.price(c.close))  V \(MarketsFormat.compact(c.volume))")
+                    } else {
+                        Text(" ")
+                    }
+                }
+                .font(.system(size: 8.5, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.6)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-        }
-        .font(.system(size: 8.5, design: .monospaced))
-        .foregroundStyle(.secondary)
-        .lineLimit(1).minimumScaleFactor(0.7)
     }
 
     // MARK: Side panel
