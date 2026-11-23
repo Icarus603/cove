@@ -190,6 +190,27 @@ enum UISnapshot {
                 let report = await playerEngineChecks(fixtures: URL(fileURLWithPath: fixtures))
                 try? report.write(toFile: dir + "/player_engine.txt", atomically: true, encoding: .utf8)
             }
+            // COVE_SHOT_LOOK=<player fixtures>,<photo fixtures>: one on-screen pass over the new screens (captures only).
+            if let pair = env["COVE_SHOT_LOOK"]?.split(separator: ",").map(String.init), pair.count == 2 {
+                await lookAtNewScreens(playerFixtures: URL(fileURLWithPath: pair[0]), photoFixtures: URL(fileURLWithPath: pair[1]), dir: dir)
+                try? "done".write(toFile: dir + "/DONE", atomically: true, encoding: .utf8)
+                NSApp.terminate(nil)
+                return
+            }
+            // COVE_SHOT_REPORT=<player fixtures>,<photo fixtures>: off-screen renders of the import report, the library manager
+            // and the photo window (nothing is shown on screen), then quit.
+            if let pair = env["COVE_SHOT_REPORT"]?.split(separator: ",").map(String.init), pair.count == 2 {
+                await importReportShots(playerFixtures: URL(fileURLWithPath: pair[0]), photoFixtures: URL(fileURLWithPath: pair[1]), dir: dir)
+                try? "done".write(toFile: dir + "/DONE", atomically: true, encoding: .utf8)
+                NSApp.terminate(nil)
+                return
+            }
+            if let fixtures = env["COVE_SHOT_PLAYER_MANAGER"] { await playerManagerChecks(fixtures: URL(fileURLWithPath: fixtures), dir: dir) }
+            // COVE_SHOT_PHOTO_LOGIC=<fixtures dir> [COVE_SHOT_PHOTO_MANY=<big dir>]: the photo library against real files.
+            if let fixtures = env["COVE_SHOT_PHOTO_LOGIC"] {
+                let report = await PhotoChecks.run(fixtures: URL(fileURLWithPath: fixtures), many: env["COVE_SHOT_PHOTO_MANY"].map { URL(fileURLWithPath: $0) })
+                try? report.write(toFile: dir + "/photo_library.txt", atomically: true, encoding: .utf8)
+            }
             // COVE_SHOT_HEADLESS=1: stop after the logic checks, before any window is shown.
             if env["COVE_SHOT_HEADLESS"] != nil {
                 try? "done".write(toFile: dir + "/DONE", atomically: true, encoding: .utf8)
@@ -229,7 +250,7 @@ enum UISnapshot {
                 window.center()
             }
             await sleep(1.5)
-            let all = ["General", "Appearance", "Modules", "Media", "Calendar", "HUD", "Battery", "Shelf", "Player", "Markets", "Agents", "AgentDisplay",
+            let all = ["General", "Appearance", "Modules", "Media", "Calendar", "HUD", "Battery", "Shelf", "Player", "Photos", "Markets", "Agents", "AgentDisplay",
                        "AgentMascots", "AgentSound", "AgentAutomation", "AgentRemote", "AgentBuddy", "AgentHooks", "Shortcuts", "Advanced", "About"]
             let tabs = env["COVE_SHOT_TABS"].map { $0.split(separator: ",").map(String.init) } ?? all
             if let number = SettingsWindowController.shared.window?.windowNumber {
@@ -750,6 +771,251 @@ enum UISnapshot {
         engine.stop()
         lines.append(failures == 0 ? "ALL PASSED" : "\(failures) FAILED")
         try? (lines.joined(separator: "\n") + "\n").write(toFile: dir + "/player_controls.txt", atomically: true, encoding: .utf8)
+    }
+
+    /// The library manager's logic and the playlist flows, against real files and no window.
+    static func playerManagerChecks(fixtures: URL, dir: String) async {
+        var lines: [String] = []
+        var failures = 0
+        func check(_ name: String, _ ok: Bool, _ detail: String = "") {
+            if !ok { failures += 1 }
+            lines.append((ok ? "PASS " : "FAIL ") + name + (detail.isEmpty ? "" : "  [\(detail)]"))
+        }
+        func settle() async { await sleep(0.25) }
+        let fm = FileManager.default
+        let work = fm.temporaryDirectory.appendingPathComponent("cove-manager-test-\(UUID().uuidString)")
+        let mediaDir = work.appendingPathComponent("media")
+        try? fm.createDirectory(at: work, withIntermediateDirectories: true)
+        try? fm.copyItem(at: fixtures, to: mediaDir)
+        defer { try? fm.removeItem(at: work) }
+
+        let library = PlayerLibrary(directory: work.appendingPathComponent("lib"))
+        await library.importURLs([mediaDir])
+        let model = PlayerManagerModel(library: library)
+        await settle()
+
+        // ---- scopes, search, sort
+        check("All shows every item", model.rows.count == 7 && model.count(for: .all) == 7, "\(model.rows.count)")
+        model.scope = .music; await settle()
+        check("Music shows only audio", model.rows.count == 5 && model.rows.allSatisfy { $0.kind == .audio })
+        model.scope = .video; await settle()
+        check("Video shows only video", model.rows.count == 2 && model.rows.allSatisfy { $0.kind == .video })
+        model.scope = .all; await settle()
+        model.search = "artist"; await settle()
+        check("search narrows the scope", model.rows.count == 3, "\(model.rows.map(\.title))")
+        model.search = "artist other"; await settle()
+        check("every search word must match", model.rows.map(\.title) == ["Gamma"], "\(model.rows.map(\.title))")
+        model.search = ""; await settle()
+        model.sortOrder = [KeyPathComparator(\.title, comparator: .localizedStandard)]; await settle()
+        check("sorting by title", model.rows.first?.title == "Alpha", "\(model.rows.first?.title ?? "-")")
+        model.sortOrder = [KeyPathComparator(\.duration, order: .reverse)]; await settle()
+        check("sorting by length puts the longest first", model.rows.first?.title == "Test Clip")
+
+        // ---- selection and bulk removal
+        model.selectAll()
+        check("Select All selects every row", model.selection.count == 7 && model.allSelected)
+        model.clearSelection()
+        check("Deselect All empties it", model.selection.isEmpty && !model.allSelected)
+        let firstThree = Array(model.rows.prefix(3).map(\.id))
+        model.selection = Set(firstThree)
+        model.removeSelected(); await settle()
+        check("many selected items are removed in one go", library.items.count == 4 && model.rows.count == 4 && model.selection.isEmpty, "left=\(library.items.count)")
+        check("the files are untouched", (try? fm.contentsOfDirectory(atPath: mediaDir.appendingPathComponent("trip").path))?.isEmpty == false || fm.fileExists(atPath: mediaDir.appendingPathComponent("song_d.wav").path))
+
+        // ---- remove everything of one kind
+        await library.importURLs([mediaDir]); await settle()
+        check("importing again restores them", library.items.count == 7, "\(library.items.count)")
+        model.scope = .video; await settle()
+        model.removeAllShown(); await settle()
+        check("Remove all shown clears one kind and nothing else", library.items.count == 5 && library.items.allSatisfy { $0.kind == .audio })
+
+        // ---- missing files
+        model.scope = .all; await settle()
+        let victim = library.items[0]
+        try? fm.removeItem(at: victim.url)
+        await library.checkAvailability(); await settle()
+        check("a deleted file shows under Missing", model.count(for: .missing) == 1)
+        model.scope = .missing; await settle()
+        check("the Missing scope lists exactly it", model.rows.map(\.id) == [victim.id])
+        model.removeAllShown(); await settle()
+        check("Remove all shown clears the missing ones", library.items.count == 4 && library.missing.isEmpty)
+
+        // ---- playlists
+        model.scope = .all; await settle()
+        let ids = model.rows.map(\.id)
+        model.selection = Set(ids.prefix(3))
+        let list = model.newPlaylist(named: "Mix", withSelection: true); await settle()
+        check("a playlist can be made from a selection", list.itemIDs.count == 3 && model.count(for: .playlist(list.id)) == 3)
+        model.scope = .playlist(list.id); await settle()
+        let order = library.playlists.first { $0.id == list.id }!.itemIDs
+        check("a playlist keeps its own order", model.rows.map(\.id) == order)
+        model.selection = [order[2]]
+        model.moveSelected(by: -1); await settle()
+        check("a selected track moves up one place", library.playlists.first { $0.id == list.id }!.itemIDs == [order[0], order[2], order[1]])
+        model.moveSelected(by: -1); model.moveSelected(by: -1); await settle()
+        check("it stops at the top", library.playlists.first { $0.id == list.id }!.itemIDs.first == order[2])
+        let u = (0..<5).map { _ in UUID() }
+        check("moving a block keeps it together", PlayerManagerModel.moved(u, selected: [u[2], u[3]], by: -1) == [u[0], u[2], u[3], u[1], u[4]])
+        check("moving down", PlayerManagerModel.moved(u, selected: [u[1]], by: 1) == [u[0], u[2], u[1], u[3], u[4]])
+        check("a block already at the end stays", PlayerManagerModel.moved(u, selected: [u[3], u[4]], by: 1) == u)
+        check("separate selections each move", PlayerManagerModel.moved(u, selected: [u[1], u[3]], by: -1) == [u[1], u[0], u[3], u[2], u[4]])
+        model.selection = [order[0]]
+        model.removeSelected(); await settle()
+        check("in a playlist Remove only leaves the playlist", library.playlists.first { $0.id == list.id }!.itemIDs.count == 2 && library.items.count == 4)
+        model.selectAll()
+        model.removeSelectedFromLibrary(); await settle()
+        check("Remove from Library takes tracks out of everything", library.items.count == 2 && library.playlists.first { $0.id == list.id }!.itemIDs.isEmpty)
+
+        // ---- the notch: a new playlist goes straight to choosing songs
+        let ui = PlayerUI.shared
+        let shared = PlayerLibrary.shared
+        await shared.importURLs([mediaDir])
+        ui.naming = .new(items: [])
+        ui.commitNaming("Road trip")
+        let made = shared.playlists.first { $0.name == "Road trip" }
+        check("creating a playlist opens it", made != nil && ui.filter == .playlist(made!.id) && ui.naming == nil)
+        check("and goes straight to picking songs for it", ui.pickingFor == made?.id)
+        let someone = shared.items.first!
+        shared.add([someone.id], toPlaylist: made!.id)
+        check("picking adds to the playlist", shared.playlists.first { $0.id == made!.id }?.itemIDs == [someone.id])
+        let other = shared.items[1]
+        shared.add([other.id], toPlaylist: made!.id)
+        ui.moveInPlaylist(other.id, by: -1)
+        check("a track can be moved up from the list", shared.playlists.first { $0.id == made!.id }?.itemIDs == [other.id, someone.id])
+        ui.pickingFor = nil
+        shared.deletePlaylist(made!.id)
+        ui.pickingFor = made!.id
+        ui.validateFilter()
+        check("deleting a playlist cannot leave the screen stuck on it", ui.filter == .all && ui.pickingFor == nil)
+        // With nothing in the library there is nothing to pick from: the new playlist opens, but no picker.
+        let emptyLibrary = PlayerLibrary(directory: work.appendingPathComponent("empty"))
+        let suite = UserDefaults(suiteName: "app.cove.player-test-\(UUID().uuidString)")!
+        let emptyUI = PlayerUI(engine: PlayerEngine(library: emptyLibrary, defaults: suite), library: emptyLibrary)
+        emptyUI.naming = .new(items: [])
+        emptyUI.commitNaming("Nothing to pick")
+        let emptyMade = emptyLibrary.playlists.first
+        check("no picker is opened when the library is empty", emptyMade != nil && emptyUI.filter == .playlist(emptyMade!.id) && emptyUI.pickingFor == nil,
+              "picking=\(String(describing: emptyUI.pickingFor))")
+
+        lines.append(failures == 0 ? "ALL PASSED" : "\(failures) FAILED")
+        try? (lines.joined(separator: "\n") + "\n").write(toFile: dir + "/player_manager.txt", atomically: true, encoding: .utf8)
+    }
+
+    /// One pass over the new screens for a human to look at: captures only, no input sent anywhere. Run once.
+    static func importReportShots(playerFixtures: URL, photoFixtures: URL, dir: String) async {
+        let player = await PlayerLibrary.shared.importURLs([playerFixtures])
+        let photos = await PhotoLibrary.shared.importURLs([photoFixtures])
+        var lines = ["player: added \(player.added) skipped \(player.skipped.map { "\($0.name)=\($0.reason)" })",
+                     "photos: added \(photos.added) skipped \(photos.skipped.map { "\($0.name)=\($0.reason)" })"]
+        let bars = VStack(spacing: 10) {
+            ImportReportBar(report: player.report, compact: true) {}
+            ImportReportBar(report: photos.report, compact: true) {}
+            ImportReportBar(report: ImportReport(domain: .media, added: 5, alreadyInLibrary: 0, skipped: []), compact: true) {}
+        }
+        .padding(14).frame(width: 560).background(Color.black).environment(\.colorScheme, .dark)
+        await render(bars, size: CGSize(width: 560, height: 150), name: "report-1-notch-bars", dir: dir)
+        await render(ImportReportBar(report: photos.report) {}.padding(14).frame(width: 600), size: CGSize(width: 600, height: 70), name: "report-2-window-bar", dir: dir)
+        await render(ImportReportView(report: player.report) {}, size: CGSize(width: 620, height: 460), name: "report-3-player-window", dir: dir)
+        await render(ImportReportView(report: photos.report) {}, size: CGSize(width: 620, height: 560), name: "report-4-photo-window", dir: dir)
+        // Sidebars are drawn by AppKit table views, which an off-screen bitmap snapshot leaves blank: the window server's own
+        // capture of the (off-screen) window shows them.
+        func windowShot<V: View>(_ root: V, name: String) async {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 560), styleMask: [.titled, .closable, .resizable],
+                                  backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentViewController = NSHostingController(rootView: root)
+            window.setFrameOrigin(NSPoint(x: -20_000, y: -20_000))
+            window.orderFront(nil)
+            await sleep(2)
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            p.arguments = ["-x", "-o", "-l\(window.windowNumber)", "\(dir)/\(name).png"]
+            try? p.run(); p.waitUntilExit()
+            window.close()
+        }
+        await windowShot(PlayerManagerView(), name: "report-5-manager")
+        await windowShot(PhotoWindowView(), name: "report-6-photos")
+        try? lines.joined(separator: "\n").write(toFile: dir + "/report.txt", atomically: true, encoding: .utf8)
+        lines.removeAll()
+    }
+
+    static func lookAtNewScreens(playerFixtures: URL, photoFixtures: URL, dir: String) async {
+        guard let screen = NSScreen.main else { return }
+        func shot(_ name: String, rect: CGRect? = nil, window: NSWindow? = nil) {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            if let window { p.arguments = ["-x", "-o", "-l\(window.windowNumber)", "\(dir)/\(name).png"] }
+            else if let rect { p.arguments = ["-x", "-R\(Int(rect.minX)),\(Int(rect.minY)),\(Int(rect.width)),\(Int(rect.height))", "\(dir)/\(name).png"] }
+            else { p.arguments = ["-x", "-R0,0,\(Int(screen.frame.width)),560", "\(dir)/\(name).png"] }
+            try? p.run(); p.waitUntilExit()
+        }
+        let ui = PlayerUI.shared, engine = PlayerEngine.shared, library = PlayerLibrary.shared, photos = PhotoLibrary.shared
+        engine.volume = 0
+        await library.importURLs([playerFixtures])
+        await photos.importURLs([photoFixtures])
+        await sleep(1)
+
+        // the Player tab
+        AppModules.present(moduleID: PlayerModule.moduleID)
+        await sleep(2.5)
+        shot("look-1-player")
+
+        // the search box's typing panel, over a spot of the screen with nothing else in it
+        let rect = NSRect(x: screen.frame.midX - 150, y: screen.frame.maxY - 640, width: 300, height: 24)
+        NotchTextInputController.shared.begin(over: rect, text: "alpha", placeholder: "Search", symbol: "magnifyingglass", onChange: { _ in }, onCommit: {})
+        await sleep(0.7)
+        shot("look-2-search-field", rect: CGRect(x: rect.minX - 20, y: screen.frame.height - rect.maxY - 20, width: rect.width + 40, height: rect.height + 40))
+        NotchTextInputController.shared.end(commit: false)
+        await sleep(0.3)
+
+        // a playlist: made, picking songs, filled, and an empty one
+        ui.naming = .new(items: [])
+        ui.commitNaming("Road trip")
+        await sleep(1.2)
+        shot("look-3-picker")
+        if let made = library.playlists.first(where: { $0.name == "Road trip" }) {
+            library.add(Array(library.items.prefix(3).map(\.id)), toPlaylist: made.id)
+            ui.pickingFor = nil
+            await sleep(1.2)
+            shot("look-4-playlist")
+        }
+        let empty = library.createPlaylist(named: "Empty one")
+        ui.filter = .playlist(empty.id)
+        await sleep(1.2)
+        shot("look-5-empty-playlist")
+        ui.filter = .all
+
+        // the closed notch while a video plays
+        if let clip = library.items.first(where: { $0.kind == .video }) {
+            ui.play(clip, in: [clip])
+            await sleep(2)
+            AppDelegate.current?.closeNotchEverywhere()
+            await sleep(2.5)
+            shot("look-6-mini-video", rect: CGRect(x: screen.frame.midX - 220, y: 0, width: 440, height: 60))
+            engine.stop()
+        }
+
+        // the library manager window
+        PlayerManagerWindowController.shared.show()
+        await sleep(2)
+        if let window = PlayerManagerWindowController.shared.window { shot("look-7-manager", window: window); window.close() }
+        await sleep(0.5)
+
+        // photos: the notch tab, the window, the viewer
+        AppModules.present(moduleID: PhotosModule.moduleID)
+        await sleep(2.5)
+        shot("look-8-photos-notch")
+        AppDelegate.current?.closeNotchEverywhere()
+        PhotoWindowController.shared.show()
+        await sleep(2.5)
+        if let window = PhotoWindowController.shared.window { shot("look-9-photo-window", window: window) }
+        if let first = await photos.ids(scope: .all).first {
+            PhotoWindowController.shared.show(scope: .all, photo: first)
+            await sleep(2.5)
+            if let window = PhotoWindowController.shared.window { shot("look-10-photo-viewer", window: window); window.close() }
+        }
+        await sleep(0.5)
+        try? "done".write(toFile: dir + "/look.txt", atomically: true, encoding: .utf8)
     }
 
     static func runIfRequested() {

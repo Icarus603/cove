@@ -99,7 +99,7 @@ class SettingsWindowController: NSWindowController {
 
     func showWindow() {
         // Set app to regular mode first
-        NSApp.setActivationPolicy(.regular)
+        AppActivation.windowOpened("settings")
 
         // If the window is already up, bring it forward; but one that has ended up off screen is put back first.
         if window?.isVisible == true {
@@ -133,8 +133,8 @@ class SettingsWindowController: NSWindowController {
     private func relinquishFocus() {
         window?.orderOut(nil)
         
-        // Set app back to accessory mode immediately
-        NSApp.setActivationPolicy(.accessory)
+        // Back to accessory mode, unless another real window (the photo library) is still open
+        AppActivation.windowClosed("settings")
     }
 }
 
@@ -149,7 +149,7 @@ extension SettingsWindowController: NSWindowDelegate {
     
     func windowDidBecomeKey(_ notification: Notification) {
         // Ensure app is in regular mode when window becomes key
-        NSApp.setActivationPolicy(.regular)
+        AppActivation.windowOpened("settings")
     }
     
     func windowDidResignKey(_ notification: Notification) {

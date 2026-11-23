@@ -11,6 +11,8 @@ import Defaults
 extension Color {
     /// Cove azure, the app's own accent when the user has not picked a custom colour.
     static let coveAccent = Color(red: 0.29, green: 0.37, blue: 0.91)
+    /// A soft amber for "file missing" and similar warnings: noticeable without shouting like system orange.
+    static let coveWarning = Color(red: 0.91, green: 0.66, blue: 0.33)
 
     static var effectiveAccent: Color {
         if Defaults[.useCustomAccentColor],

@@ -37,6 +37,7 @@ struct SettingsView: View {
             ("Battery", "Battery", "battery.100.bolt"),
             ("Shelf", "Shelf", "books.vertical"),
             ("Player", "Player", "play.rectangle"),
+            ("Photos", "Photos", "photo.on.rectangle"),
             ("Markets", "Markets", "chart.line.uptrend.xyaxis"),
         ]),
         ("Agents", [
@@ -112,6 +113,8 @@ struct SettingsView: View {
                     Shelf()
                 case "Player":
                     PlayerSettings()
+                case "Photos":
+                    PhotoSettings()
                 case "Markets":
                     MarketsSettings()
                 case "Shortcuts":

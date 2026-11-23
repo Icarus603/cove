@@ -106,7 +106,7 @@ struct PlayerVideoView: View {
             ProgressView().controlSize(.regular).tint(.white)
         case .failed(let reason):
             VStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill").font(.title2).foregroundStyle(.orange)
+                Image(systemName: "exclamationmark.triangle.fill").font(.title2).foregroundStyle(Color.coveWarning)
                 Text(reason).font(.callout).multilineTextAlignment(.center)
                 if let item = engine.current, PlayerLibrary.shared.missing.contains(item.id) {
                     Button("Locate…") { ui.locate(item) }.controlSize(.small)

@@ -163,7 +163,7 @@ final class PlayerLibrary: ObservableObject {
                 if let probe {
                     pending.append(makeItem(url: url, probe: probe))
                 } else {
-                    summary.failed.append(url.lastPathComponent)
+                    summary.skipped.append(SkippedFile.diagnose(url.path, domain: .media))
                 }
                 if pending.count >= 20 { append(pending); pending = [] }
                 importProgress = (done, fresh.count)
@@ -201,7 +201,7 @@ final class PlayerLibrary: ObservableObject {
         func consider(_ url: URL) {
             switch MediaFormats.support(of: url) {
             case .supported: files.append(url)
-            case .unsupported: summary.unsupported.append(url.lastPathComponent)
+            case .unsupported: summary.skipped.append(SkippedFile(path: url.path, reason: .format, domain: .media))
             case .notMedia: break
             }
         }
@@ -325,6 +325,14 @@ final class PlayerLibrary: ObservableObject {
     func remove(_ ids: Set<UUID>, fromPlaylist id: UUID) {
         guard let index = playlists.firstIndex(where: { $0.id == id }) else { return }
         playlists[index].itemIDs.removeAll { ids.contains($0) }
+        scheduleSave()
+    }
+
+    /// Replaces a playlist's order (the same tracks, arranged differently). Anything not already in the playlist is ignored.
+    func setOrder(_ ids: [UUID], forPlaylist id: UUID) {
+        guard let index = playlists.firstIndex(where: { $0.id == id }) else { return }
+        let members = Set(playlists[index].itemIDs)
+        playlists[index].itemIDs = ids.filter { members.contains($0) }
         scheduleSave()
     }
 

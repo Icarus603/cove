@@ -56,6 +56,8 @@ final class PlayerUI: ObservableObject {
     @Published var search = ""
     @Published var selection: Set<UUID> = []
     @Published var naming: Naming?
+    /// The playlist songs are being chosen for: the library list shows a + on every row until Done.
+    @Published var pickingFor: UUID?
     @Published var sort: LibrarySort {
         didSet { UserDefaults.standard.set(sort.rawValue, forKey: PlayerSettingsKey.sort) }
     }
@@ -156,6 +158,13 @@ final class PlayerUI: ObservableObject {
     /// Falls back to All when the selected playlist no longer exists.
     func validateFilter() {
         if case .playlist(let id) = filter, !library.playlists.contains(where: { $0.id == id }) { filter = .all }
+        if let id = pickingFor, !library.playlists.contains(where: { $0.id == id }) { pickingFor = nil }
+    }
+
+    /// Moves one track a place up (-1) or down (+1) inside the playlist being shown.
+    func moveInPlaylist(_ itemID: UUID, by offset: Int) {
+        guard case .playlist(let id) = filter, let playlist = library.playlists.first(where: { $0.id == id }) else { return }
+        library.setOrder(PlayerManagerModel.moved(playlist.itemIDs, selected: [itemID], by: offset), forPlaylist: id)
     }
 
     // MARK: Adding
@@ -176,30 +185,6 @@ final class PlayerUI: ObservableObject {
             guard response == .OK, let self else { return }
             let urls = panel.urls
             Task { await self.library.importURLs(urls) }
-        }
-    }
-
-    /// Files dropped on the Player tab.
-    func importDropped(_ providers: [NSItemProvider]) -> Bool {
-        let fileProviders = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
-        guard !fileProviders.isEmpty else { return false }
-        Task {
-            var urls: [URL] = []
-            for provider in fileProviders {
-                if let url = await Self.fileURL(from: provider) { urls.append(url) }
-            }
-            if !urls.isEmpty { await library.importURLs(urls) }
-        }
-        return true
-    }
-
-    private static func fileURL(from provider: NSItemProvider) async -> URL? {
-        await withCheckedContinuation { continuation in
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) { continuation.resume(returning: url) }
-                else if let url = item as? URL { continuation.resume(returning: url) }
-                else { continuation.resume(returning: nil) }
-            }
         }
     }
 
@@ -233,6 +218,8 @@ final class PlayerUI: ObservableObject {
         case .new(let items):
             let playlist = library.createPlaylist(named: text, with: items)
             filter = .playlist(playlist.id)
+            // A new, empty playlist goes straight to choosing what is in it: there is nothing else to do with it.
+            if items.isEmpty, !library.items.isEmpty { pickingFor = playlist.id }
         case .rename(let id):
             library.renamePlaylist(id, to: text)
         case nil:

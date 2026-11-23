@@ -73,7 +73,7 @@ enum MediaFormats {
         return .notMedia
     }
 
-    /// Types for the open panel and the drop target.
+    /// Types for the open panel.
     static var contentTypes: [UTType] {
         supported.compactMap { UTType(filenameExtension: $0) } + [.folder]
     }
@@ -82,12 +82,16 @@ enum MediaFormats {
 struct ImportSummary: Equatable {
     var added = 0
     var alreadyInLibrary = 0
-    /// File names in formats the system cannot play (mkv, webm…).
-    var unsupported: [String] = []
-    /// Files that looked playable but could not be read.
-    var failed: [String] = []
+    /// Every file that was looked at and left out, with why.
+    var skipped: [SkippedFile] = []
 
-    var isEmpty: Bool { added == 0 && alreadyInLibrary == 0 && unsupported.isEmpty && failed.isEmpty }
+    /// Names of files in formats the system cannot play (mkv, webm…).
+    var unsupported: [String] { skipped.filter(\.isFormatProblem).map(\.name) }
+    /// Names of files that looked playable but could not be read.
+    var failed: [String] { skipped.filter { !$0.isFormatProblem }.map(\.name) }
+
+    var isEmpty: Bool { added == 0 && alreadyInLibrary == 0 && skipped.isEmpty }
+    var report: ImportReport { ImportReport(domain: .media, added: added, alreadyInLibrary: alreadyInLibrary, skipped: skipped) }
 }
 
 enum LibraryFilter: Hashable {

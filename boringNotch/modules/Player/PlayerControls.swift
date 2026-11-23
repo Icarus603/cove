@@ -160,7 +160,7 @@ struct PlayerIconButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: size, weight: .semibold))
-                .foregroundStyle(active ? Color.accentColor : Color.white.opacity(0.85))
+                .foregroundStyle(active ? Color.effectiveAccent : Color.white.opacity(0.85))
                 .frame(width: size + 10, height: size + 10)
                 .contentShape(Rectangle())
         }
@@ -227,7 +227,7 @@ struct PlayerOptionsMenus: View {
             } label: {
                 Text(PlayerFormat.rate(engine.rate))
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(engine.rate == 1 ? Color.white.opacity(0.85) : Color.accentColor)
+                    .foregroundStyle(engine.rate == 1 ? Color.white.opacity(0.85) : Color.effectiveAccent)
                     .frame(minWidth: 26)
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
@@ -259,7 +259,7 @@ struct PlayerOptionsMenus: View {
                 } label: {
                     Image(systemName: "captions.bubble")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(engine.subtitleTracks.contains { $0.isSelected } ? Color.accentColor : Color.white.opacity(0.85))
+                        .foregroundStyle(engine.subtitleTracks.contains { $0.isSelected } ? Color.effectiveAccent : Color.white.opacity(0.85))
                         .frame(width: 22, height: 22)
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()

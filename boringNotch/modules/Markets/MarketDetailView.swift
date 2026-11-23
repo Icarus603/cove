@@ -183,7 +183,7 @@ struct MarketDetailView: View {
                     Label("Latest", systemImage: "forward.end.fill")
                         .font(.system(size: 9, weight: .semibold))
                         .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Capsule().fill(Color.accentColor.opacity(0.85)))
+                        .background(Capsule().fill(Color.effectiveAccent.opacity(0.85)))
                         .foregroundStyle(.white)
                 }
                 .buttonStyle(.plain)

@@ -1,0 +1,218 @@
+//
+//  PhotoBrowserModel.swift
+//  boringNotch
+//
+//  What one photo window is showing and doing: the list (an album or everything, searched and sorted), the selection, which
+//  photo is open in the viewer, and the slideshow. Timers live here, not in views: views are rebuilt all the time and a
+//  timer made inside one is replaced before it fires.
+//
+
+import AppKit
+import Combine
+import SwiftUI
+
+@MainActor
+final class PhotoBrowserModel: ObservableObject {
+    let library: PhotoLibrary
+
+    @Published var scope: PhotoScope = .all { didSet { if oldValue != scope { selection = []; reload() } } }
+    @Published var search = "" { didSet { if oldValue != search { scheduleReload() } } }
+    @Published var sort: PhotoSort { didSet { UserDefaults.standard.set(sort.rawValue, forKey: Self.sortKey); reload() } }
+    @Published var thumbSize: Double { didSet { UserDefaults.standard.set(thumbSize, forKey: Self.sizeKey) } }
+    @Published private(set) var ids: [Int64] = []
+    @Published var selection: Set<Int64> = []
+    /// The photo open in the viewer, if any.
+    @Published var viewing: Int64?
+    @Published var toast: String?
+    @Published private(set) var slideshowActive = false
+    /// The viewer's controls are shown, or have faded during a slideshow.
+    @Published var chromeVisible = true
+    @Published var isLoading = false
+
+    private static let sortKey = "photos.sort"
+    private static let sizeKey = "photos.thumbSize"
+    private var anchor: Int64?
+    private var reloadTask: Task<Void, Never>?
+    private var observer: AnyCancellable?
+    private var slideshowTimer: Timer?
+    private var chromeTimer: Timer?
+    private var toastTask: Task<Void, Never>?
+    private(set) var lastActivity = Date()
+    static let slideshowInterval: TimeInterval = 4
+
+    init(library: PhotoLibrary = .shared) {
+        self.library = library
+        sort = PhotoSort(rawValue: UserDefaults.standard.string(forKey: Self.sortKey) ?? "") ?? .takenNewest
+        let stored = UserDefaults.standard.double(forKey: Self.sizeKey)
+        thumbSize = stored > 0 ? stored : 150
+        observer = library.$revision.dropFirst().sink { [weak self] _ in self?.reload() }
+        reload()
+    }
+
+    deinit {
+        slideshowTimer?.invalidate()
+        chromeTimer?.invalidate()
+    }
+
+    // MARK: List
+
+    func reload() {
+        reloadTask?.cancel()
+        isLoading = true
+        reloadTask = Task { [weak self] in
+            guard let self else { return }
+            let new = await library.ids(scope: scope, search: search, sort: sort)
+            guard !Task.isCancelled else { return }
+            ids = new
+            isLoading = false
+            selection.formIntersection(Set(new))
+            if let open = viewing, !new.contains(open) { viewing = nil; stopSlideshow() }
+        }
+    }
+
+    /// A search reloads shortly after the last key, not on every one.
+    private func scheduleReload() {
+        reloadTask?.cancel()
+        reloadTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            self?.reload()
+        }
+    }
+
+    var title: String {
+        switch scope {
+        case .all: return String(localized: "All Photos")
+        case .album(let id): return library.albums.first { $0.id == id }?.name ?? String(localized: "Album")
+        }
+    }
+
+    // MARK: Selection
+
+    /// A click: replaces the selection; with ⌘ toggles one; with ⇧ extends from the last click to this one.
+    func click(_ id: Int64, command: Bool, shift: Bool) {
+        if shift, let anchor, let a = ids.firstIndex(of: anchor), let b = ids.firstIndex(of: id) {
+            selection = Set(ids[min(a, b)...max(a, b)])
+        } else if command {
+            if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+            anchor = id
+        } else {
+            selection = [id]
+            anchor = id
+        }
+    }
+
+    func selectAll() { selection = Set(ids) }
+    func clearSelection() { selection = [] }
+
+    /// What an action applies to: the selection, or the one photo it was started on when that is not selected.
+    func targets(for id: Int64?) -> [Int64] {
+        guard let id else { return ids.filter { selection.contains($0) } }
+        return selection.contains(id) ? ids.filter { selection.contains($0) } : [id]
+    }
+
+    // MARK: Actions
+
+    func addToAlbum(_ albumID: Int64, photos targets: [Int64]) {
+        Task {
+            let added = await library.add(targets, toAlbum: albumID)
+            let name = library.albums.first { $0.id == albumID }?.name ?? ""
+            show(toast: added == 0 ? String(localized: "Already in “\(name)”") : String(localized: "Added \(added) to “\(name)”"))
+        }
+    }
+
+    func newAlbum(named name: String, with targets: [Int64]) {
+        Task {
+            if let album = await library.createAlbum(named: name, with: targets) {
+                if !targets.isEmpty { show(toast: String(localized: "Added \(targets.count) to “\(album.name)”")) }
+            }
+        }
+    }
+
+    /// In an album this takes photos out of the album; in All Photos it takes them out of the library. Files are never touched.
+    func removeTargets(_ targets: [Int64]) {
+        guard !targets.isEmpty else { return }
+        Task {
+            switch scope {
+            case .all: await library.remove(targets)
+            case .album(let id): await library.remove(targets, fromAlbum: id)
+            }
+        }
+    }
+
+    func show(toast text: String) {
+        toast = text
+        toastTask?.cancel()
+        toastTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            guard !Task.isCancelled else { return }
+            self?.toast = nil
+        }
+    }
+
+    // MARK: Viewer
+
+    var viewingIndex: Int? { viewing.flatMap { ids.firstIndex(of: $0) } }
+
+    func open(_ id: Int64) {
+        viewing = id
+        poke()
+    }
+
+    func closeViewer() {
+        viewing = nil
+        stopSlideshow()
+    }
+
+    func step(_ offset: Int, wrapping: Bool = false) {
+        guard let index = viewingIndex, !ids.isEmpty else { return }
+        var next = index + offset
+        if wrapping { next = (next % ids.count + ids.count) % ids.count }
+        guard ids.indices.contains(next) else { return }
+        viewing = ids[next]
+    }
+
+    // MARK: Slideshow
+
+    func startSlideshow() {
+        if viewing == nil, let first = ids.first(where: { selection.contains($0) }) ?? ids.first { viewing = first }
+        guard viewing != nil else { return }
+        slideshowActive = true
+        restartSlideshowTimer()
+        poke()
+        chromeTimer?.invalidate()
+        chromeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hideChromeIfIdle() }
+        }
+    }
+
+    func stopSlideshow() {
+        slideshowActive = false
+        slideshowTimer?.invalidate(); slideshowTimer = nil
+        chromeTimer?.invalidate(); chromeTimer = nil
+        chromeVisible = true
+    }
+
+    func toggleSlideshow() { slideshowActive ? stopSlideshow() : startSlideshow() }
+
+    /// A manual step during a slideshow starts the countdown again, so the picture just chosen is not skipped at once.
+    func restartSlideshowTimer() {
+        slideshowTimer?.invalidate()
+        guard slideshowActive else { return }
+        slideshowTimer = Timer.scheduledTimer(withTimeInterval: Self.slideshowInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.step(1, wrapping: true) }
+        }
+    }
+
+    /// Something happened (the pointer moved, a key was pressed): show the controls and start their countdown again.
+    func poke() {
+        lastActivity = Date()
+        if !chromeVisible { chromeVisible = true }
+    }
+
+    private func hideChromeIfIdle() {
+        guard chromeVisible, slideshowActive, Date().timeIntervalSince(lastActivity) > 2.5 else { return }
+        chromeVisible = false
+        NSCursor.setHiddenUntilMouseMoves(true)
+    }
+}

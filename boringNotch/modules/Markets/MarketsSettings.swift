@@ -118,7 +118,7 @@ struct MarketsSettings: View {
                         }
                         Button { add(symbol) } label: { Label("Add", systemImage: "plus.circle.fill").labelStyle(.iconOnly) }
                             .buttonStyle(.borderless)
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(Color.effectiveAccent)
                             .help(Text("Add"))
                     }
                     .contentShape(Rectangle())

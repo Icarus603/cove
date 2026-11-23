@@ -106,7 +106,7 @@ struct PlayerMiniBar: View {
         .frame(height: notchHeight, alignment: .center)
         .overlay(alignment: .bottom) {
             GeometryReader { geo in
-                Capsule().fill(Color.accentColor.opacity(0.9))
+                Capsule().fill(Color.effectiveAccent.opacity(0.9))
                     .frame(width: geo.size.width * (engine.duration > 0 ? min(engine.time / engine.duration, 1) : 0), height: 1.5)
                     .offset(y: geo.size.height - 1.5)
             }
@@ -116,7 +116,8 @@ struct PlayerMiniBar: View {
 
     @ViewBuilder
     private var cover: some View {
-        if let item = engine.current, let image = library.artwork(for: item) {
+        // Music shows its cover. A video shows an icon: one frame cut down to 30 pt and cropped square reads as a random patch of colour.
+        if let item = engine.current, item.kind == .audio, let image = library.artwork(for: item) {
             Image(nsImage: image).resizable().scaledToFill().clipShape(RoundedRectangle(cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed))
         } else {
             RoundedRectangle(cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed).fill(Color.white.opacity(0.18))

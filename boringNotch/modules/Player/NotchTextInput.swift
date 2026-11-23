@@ -103,21 +103,24 @@ final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDel
         let background = NSView(frame: NSRect(origin: .zero, size: rect.size))
         background.wantsLayer = true
         background.layer?.cornerRadius = 7
-        background.layer?.backgroundColor = NSColor(white: 0.2, alpha: 1).cgColor
-        background.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        background.layer?.backgroundColor = NSColor(white: 0.17, alpha: 1).cgColor
+        // A quiet outline, not the system accent: the notch has its own look, and the user may have picked their own colour.
+        background.layer?.borderColor = NSColor.white.withAlphaComponent(0.3).cgColor
         background.layer?.borderWidth = 1
 
-        let field = NSTextField(frame: NSRect(x: 8, y: (rect.height - 18) / 2, width: rect.width - 16, height: 18))
+        let field = NSTextField(frame: NSRect(x: 8, y: 0, width: rect.width - 16, height: rect.height))
+        let cell = CenteredTextFieldCell(textCell: "")
+        cell.isEditable = true
+        cell.isScrollable = true
+        cell.lineBreakMode = .byClipping
+        field.cell = cell
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
         field.textColor = .white
         field.font = .systemFont(ofSize: 11)
-        field.placeholderString = nil
         field.stringValue = text
         field.delegate = self
-        field.cell?.isScrollable = true
-        field.cell?.lineBreakMode = .byClipping
         background.addSubview(field)
         panel.contentView = background
 
@@ -127,7 +130,11 @@ final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDel
         holdsInteraction = true
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
-        field.currentEditor()?.selectedRange = NSRange(location: field.stringValue.count, length: 0)
+        if let editor = field.currentEditor() as? NSTextView {
+            editor.insertionPointColor = .white
+            editor.selectedTextAttributes = [.backgroundColor: NSColor.white.withAlphaComponent(0.28), .foregroundColor: NSColor.white]
+            editor.selectedRange = NSRange(location: field.stringValue.count, length: 0)
+        }
     }
 
     /// Closes the panel. `commit` is true for Return, false for Escape or when it lost the keyboard.
@@ -158,5 +165,27 @@ final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDel
     func windowDidResignKey(_ notification: Notification) {
         // A click elsewhere ends typing, keeping what was typed.
         end(commit: false)
+    }
+}
+
+
+/// A text field cell that keeps its text, and the caret while editing, in the vertical middle of the field. The stock cell
+/// draws at the top of any space taller than the text, which left the caret riding high in the notch's search box.
+private final class CenteredTextFieldCell: NSTextFieldCell {
+    private func centered(_ rect: NSRect) -> NSRect {
+        let height = cellSize(forBounds: rect).height
+        return NSRect(x: rect.minX, y: rect.minY + (rect.height - height) / 2, width: rect.width, height: height)
+    }
+
+    override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
+        super.drawInterior(withFrame: centered(cellFrame), in: controlView)
+    }
+
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: centered(rect), in: controlView, editor: textObj, delegate: delegate, event: event)
+    }
+
+    override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, start selStart: Int, length selLength: Int) {
+        super.select(withFrame: centered(rect), in: controlView, editor: textObj, delegate: delegate, start: selStart, length: selLength)
     }
 }
