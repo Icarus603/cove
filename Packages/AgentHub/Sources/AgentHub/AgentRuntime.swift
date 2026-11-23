@@ -304,11 +304,11 @@ extension AgentRuntime {
     }
 
     /// Loads one of CodeIsland's preview scenarios (working, approval, question, completion, multi, allcli…).
-    public func debugApply(scenario name: String) {
+    public func debugApply(scenario name: String, keepCollapsed: Bool = false) {
         debugReset()
         guard let scenario = PreviewScenario(rawValue: name) else { return }
         DebugHarness.apply(scenario, to: appState)
-        if appState.surface == .collapsed { appState.surface = .sessionList }
+        if !keepCollapsed, appState.surface == .collapsed { appState.surface = .sessionList }
     }
 }
 #endif

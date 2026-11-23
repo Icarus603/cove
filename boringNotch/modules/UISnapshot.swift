@@ -106,12 +106,58 @@ enum UISnapshot {
                 try? p.run()
                 p.waitUntilExit()
             }
+            // COVE_SHOT_SCENARIO=<agent preview scenario>: show that agent state in the closed notch first.
+            if let scenario = env["COVE_SHOT_SCENARIO"] {
+                AppDelegate.current?.closeNotchEverywhere()
+                // Live hook events from real agent sessions on this Mac replace the preview, so re-apply it right up to
+                // the capture.
+                for _ in 0..<8 {
+                    AgentRuntime.shared.debugApply(scenario: scenario, keepCollapsed: true)
+                    await sleep(0.4)
+                }
+            }
             if let screen = NSScreen.main {
-                capture(["-R0,0,\(Int(screen.frame.width)),80"], "notch")
+                // COVE_SHOT_BURST=<n>: n captures one second apart, to catch a live agent tool coming and going.
+                let burst = Int(env["COVE_SHOT_BURST"] ?? "") ?? 1
+                for index in 1...max(burst, 1) {
+                    capture(["-R0,0,\(Int(screen.frame.width)),80"], burst > 1 ? "notch-\(index)" : "notch")
+                    if index < burst { await sleep(1) }
+                }
+            }
+            // COVE_SHOT_NOTCH_TAB=<module id>: open the notch on that tab and capture it too.
+            if let tab = env["COVE_SHOT_NOTCH_TAB"], let screen = NSScreen.main {
+                AppModules.present(moduleID: tab)
+                // COVE_SHOT_MARKET_DETAIL=<symbol>: open that pair's detail view on the Markets tab.
+                if let symbol = env["COVE_SHOT_MARKET_DETAIL"] {
+                    await sleep(2)
+                    MarketDetailStore.shared.open(symbol)
+                    await sleep(2)
+                }
+                await sleep(5)
+                capture(["-R0,0,\(Int(screen.frame.width)),420"], "notch-open")
+                // COVE_SHOT_CHART_STEPS="zoom:0.5;pan:150;wait:3;reset": drive the chart and capture after each step.
+                if let steps = env["COVE_SHOT_CHART_STEPS"] {
+                    for (index, step) in steps.split(separator: ";").enumerated() {
+                        let parts = step.split(separator: ":").map(String.init)
+                        var info: [String: Any] = [:]
+                        switch parts[0] {
+                        case "pan": info["pan"] = Int(parts.dropFirst().first ?? "") ?? 0
+                        case "zoom": info["zoom"] = Double(parts.dropFirst().first ?? "") ?? 1
+                        case "reset": info["reset"] = true
+                        case "interval": if let raw = parts.dropFirst().first, let value = CandleInterval(rawValue: raw) { MarketDetailStore.shared.setInterval(value) }
+                        default: break
+                        }
+                        if !info.isEmpty { NotificationCenter.default.post(name: Notification.Name("CoveChartCommand"), object: nil, userInfo: info) }
+                        await sleep(parts[0] == "wait" ? (Double(parts.dropFirst().first ?? "") ?? 2) : 3)
+                        capture(["-R0,0,\(Int(screen.frame.width)),420"], "chart-\(index + 1)-\(parts[0])")
+                    }
+                }
+                AppDelegate.current?.closeNotchEverywhere()
+                await sleep(1)
             }
             SettingsWindowController.shared.showWindow()
             await sleep(1.5)
-            let all = ["General", "Appearance", "Modules", "Media", "Calendar", "HUD", "Battery", "Shelf", "Agents", "AgentDisplay",
+            let all = ["General", "Appearance", "Modules", "Media", "Calendar", "HUD", "Battery", "Shelf", "Markets", "Agents", "AgentDisplay",
                        "AgentMascots", "AgentSound", "AgentAutomation", "AgentRemote", "AgentBuddy", "AgentHooks", "Shortcuts", "Advanced", "About"]
             let tabs = env["COVE_SHOT_TABS"].map { $0.split(separator: ",").map(String.init) } ?? all
             if let number = SettingsWindowController.shared.window?.windowNumber {

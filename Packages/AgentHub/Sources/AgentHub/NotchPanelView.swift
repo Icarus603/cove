@@ -9,6 +9,15 @@ enum NotchWidthScale {
     static let step = 1
 }
 
+/// The slot after the mascot in the collapsed bar on a notched screen, which holds the tool name or the plan-limit chip.
+/// Its width is fixed (the user's setting, never narrower than the chip) so the bar does not change width as tools come
+/// and go; a longer tool name is shortened in the middle, and its full name is in the tooltip.
+enum ToolNameSlot {
+    static let min = 40
+    static let max = 160
+    static let step = 4
+}
+
 enum NotchWidthMetrics {
     /// On notched displays the island can grow beyond the physical notch but never
     /// shrink under it — narrower would expose the bare hardware cutout (#268).
@@ -605,6 +614,8 @@ struct CompactLeftWing: View {
     let mascotSize: CGFloat
     let hasNotch: Bool
     let showToolStatus: Bool
+    /// Fixed width of the slot after the mascot (see `ToolNameSlot`); nil keeps the content's own width.
+    var slotWidth: CGFloat? = nil
     @AppStorage(SettingsKey.sessionGroupingMode) private var groupingMode = SettingsDefaults.sessionGroupingMode
     // Bound via @AppStorage so flipping the default mascot in Settings rerenders this view
     // even when AppState.primarySource wasn't recomputed (no session mutations in flight).
@@ -657,7 +668,8 @@ struct CompactLeftWing: View {
                         .foregroundStyle(toolStatusColor(tool))
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .frame(maxWidth: ToolNameDisplay.compactMaxWidth, alignment: .leading)
+                        .frame(width: slotWidth, alignment: .leading)
+                        .frame(maxWidth: slotWidth == nil ? ToolNameDisplay.compactMaxWidth : nil, alignment: .leading)
                         .transition(.opacity)
                         .help(tool)
                 } else if let limit = QuotaChip.limit(appState: appState, enabled: showClaudeQuota, modeRaw: claudeQuotaChip),
@@ -675,11 +687,22 @@ struct CompactLeftWing: View {
                         .background(GeometryReader { geo in
                             Color.clear.preference(key: QuotaChipWidthKey.self, value: geo.size.width)
                         })
+                        .frame(width: slotWidth, alignment: .leading)
                         .transition(.opacity)
+                } else if let slotWidth, hasNotch, showToolStatus {
+                    // Nothing to show yet: keep the slot, so the bar is the same width with or without a tool.
+                    Color.clear.frame(width: slotWidth, height: 1)
                 }
             }
         }
+        // Ideal width, not whatever the bar happens to offer: measured while squeezed it would just report the squeeze.
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.leading, 6)
+        // The wing's real width (mascot, tool name or plan-limit chip, padding), so the bar can be made wide enough that
+        // none of it reaches under the notch, whatever the tool is called.
+        .background(GeometryReader { geo in
+            Color.clear.preference(key: CompactLeftWingWidthKey.self, value: geo.size.width)
+        })
         .clipped()
         .onChange(of: liveTool) { _, newTool in
             lingerTimer?.invalidate()
@@ -3320,6 +3343,14 @@ enum CompactRightWingLayout {
     static func missing(contentWidth: CGFloat, wing: CGFloat, statusExtra: CGFloat, hasNotch: Bool) -> CGFloat {
         guard hasNotch, contentWidth > 0 else { return 0 }
         return Swift.max(0, contentWidth + QuotaChipLayout.notchGap - (wing + statusExtra / 2))
+    }
+}
+
+/// Reports the collapsed left wing's laid-out width up to the bar.
+struct CompactLeftWingWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = Swift.max(value, nextValue())
     }
 }
 

@@ -16,9 +16,11 @@ struct AgentCompactBar: View {
     @AppStorage(SettingsKey.collapsedWidthScale) private var collapsedWidthScale = SettingsDefaults.collapsedWidthScale
     @AppStorage(SettingsKey.showClaudeQuota) private var showClaudeQuota = SettingsDefaults.showClaudeQuota
     @AppStorage(SettingsKey.claudeQuotaChip) private var claudeQuotaChip = SettingsDefaults.claudeQuotaChip
+    @AppStorage(SettingsKey.toolNameWidth) private var toolNameWidth = SettingsDefaults.toolNameWidth
 
     @State private var quotaChipWidth: CGFloat = 0
     @State private var rightWingWidth: CGFloat = 0
+    @State private var leftWingWidth: CGFloat = 0
 
     private var mascotSize: CGFloat { min(27, notchHeight - 6) }
     private var compactWingWidth: CGFloat { mascotSize + 14 }
@@ -37,11 +39,32 @@ struct AgentCompactBar: View {
     private var maxPanelWidth: CGFloat { min(620, screenWidth - 40) }
     private var collapsedBarWidth: CGFloat { effectiveNotchW + compactWingWidth * 2 + collapsedStatusExtra }
 
+    /// Width of whatever sits after the mascot in the left wing: the tool name while a tool runs, else the plan-limit
+    /// chip. Measured once laid out; until then the chip's estimate (there is nothing to estimate for a tool name).
+    private var leftSlotWidth: CGFloat {
+        if quotaChipWidth > 0 { return quotaChipWidth }
+        guard let limit = QuotaChip.limit(appState: appState, enabled: showClaudeQuota, modeRaw: claudeQuotaChip) else { return 0 }
+        return QuotaChip.estimatedWidth(for: limit)
+    }
+
+    /// Fixed width of the slot beside the mascot on a notched screen: the setting, widened to fit the plan-limit chip
+    /// when one is shown (the chip has no shortened form). Constant while tools come and go.
+    private var slotWidth: CGFloat? {
+        guard hasNotch else { return nil }
+        let setting = CGFloat(min(max(toolNameWidth, ToolNameSlot.min), ToolNameSlot.max))
+        return max(setting, leftSlotWidthForChip)
+    }
+
+    private var leftSlotWidthForChip: CGFloat {
+        guard let limit = QuotaChip.limit(appState: appState, enabled: showClaudeQuota, modeRaw: claudeQuotaChip) else { return 0 }
+        return quotaChipWidth > 0 ? quotaChipWidth : QuotaChip.estimatedWidth(for: limit)
+    }
+
     private var quotaReserve: QuotaChipLayout.Reserve {
-        guard let limit = QuotaChip.limit(appState: appState, enabled: showClaudeQuota, modeRaw: claudeQuotaChip) else { return .none }
-        let chipWidth = quotaChipWidth > 0 ? quotaChipWidth : QuotaChip.estimatedWidth(for: limit)
+        let slot = leftSlotWidth
+        guard slot > 0 else { return .none }
         return QuotaChipLayout.reserve(
-            chipWidth: chipWidth, mascotSize: mascotSize, wing: compactWingWidth,
+            chipWidth: slot, mascotSize: mascotSize, wing: compactWingWidth,
             statusExtra: collapsedStatusExtra, hasNotch: hasNotch, spareWidth: maxPanelWidth - collapsedBarWidth
         )
     }
@@ -51,18 +74,24 @@ struct AgentCompactBar: View {
                                        statusExtra: collapsedStatusExtra, hasNotch: hasNotch)
     }
 
-    /// The host centres this bar on the notch and does not shift it, so extra width is always split evenly between
-    /// the wings. On a notched screen the bar therefore grows by twice what the needier wing lacks: that wing gets
-    /// exactly what it needs and the gap between the wings stays over the notch (growing by only the shortfall would
-    /// leave the chip's tail half under the notch). Without a notch the chip just takes its own width.
+    /// The host centres this bar on the notch, so width is always shared evenly between the two wings, and the room
+    /// each wing has is (bar width - notch) / 2. On a notched screen the bar is therefore sized from the wings' measured
+    /// widths: each side gets whichever is largest of the base wing, the left wing's real content (mascot, tool name or
+    /// plan-limit chip) and the right wing's, plus a small gap. Nothing is then estimated, so a long tool name can no
+    /// longer slide under the notch. Without a notch the chip just takes its own width.
     private var totalWidth: CGFloat {
-        let extra = hasNotch ? 2 * max(quotaReserve.extraWidth, rightWingReserve) : quotaReserve.extraWidth + rightWingReserve
-        return collapsedBarWidth + extra
+        guard hasNotch else { return collapsedBarWidth + quotaReserve.extraWidth + rightWingReserve }
+        let gap = QuotaChipLayout.notchGap
+        let base = compactWingWidth + collapsedStatusExtra / 2
+        let left = leftWingWidth > 0 ? leftWingWidth + gap : 0
+        let right = rightWingWidth > 0 ? rightWingWidth + gap : 0
+        return effectiveNotchW + 2 * max(base, left, right)
     }
 
     var body: some View {
         HStack(spacing: 0) {
-            CompactLeftWing(appState: appState, expanded: false, mascotSize: mascotSize, hasNotch: hasNotch, showToolStatus: showToolStatus)
+            CompactLeftWing(appState: appState, expanded: false, mascotSize: mascotSize, hasNotch: hasNotch, showToolStatus: showToolStatus,
+                            slotWidth: slotWidth)
             if hasNotch {
                 Spacer(minLength: effectiveNotchW)
             } else if showToolStatus {
@@ -74,8 +103,9 @@ struct AgentCompactBar: View {
             CompactRightWing(appState: appState, expanded: false, hasNotch: hasNotch)
         }
         .frame(width: totalWidth, height: notchHeight)
-        .onPreferenceChange(QuotaChipWidthKey.self) { if $0 > 0 { quotaChipWidth = $0 } }
+        .onPreferenceChange(QuotaChipWidthKey.self) { quotaChipWidth = $0 }
         .onPreferenceChange(CompactRightWingWidthKey.self) { if $0 > 0 { rightWingWidth = $0 } }
+        .onPreferenceChange(CompactLeftWingWidthKey.self) { leftWingWidth = $0 }
     }
 }
 

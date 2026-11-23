@@ -121,6 +121,9 @@ enum SettingsKey {
     // Island collapsed width scale (percentage: 50–150, default 100)
     static let collapsedWidthScale = "collapsedWidthScale"
 
+    // Width of the slot beside the mascot on a notched screen that holds the tool name or the plan-limit chip (points)
+    static let toolNameWidth = "toolNameWidth"
+
     // Default mascot source when no sessions exist (falls back to this instead of always "claude")
     static let defaultSource = "defaultSource"
 
@@ -230,6 +233,9 @@ struct SettingsDefaults {
 
     static let collapsedWidthScale = 100  // percentage
 
+    /// Wide enough for "WebSearch"; longer names are shortened in the middle. See `ToolNameSlot`.
+    static let toolNameWidth = 64
+
     static let defaultSource = "claude"
 
     static let esp32BridgeEnabled = false
@@ -327,6 +333,7 @@ class SettingsManager {
             SettingsKey.sessionGroupingMode: SettingsDefaults.sessionGroupingMode,
             SettingsKey.showToolStatus: SettingsDefaults.showToolStatus,
             SettingsKey.collapsedWidthScale: SettingsDefaults.collapsedWidthScale,
+            SettingsKey.toolNameWidth: SettingsDefaults.toolNameWidth,
             SettingsKey.esp32BridgeEnabled: SettingsDefaults.esp32BridgeEnabled,
             SettingsKey.esp32HeartbeatSeconds: SettingsDefaults.esp32HeartbeatSeconds,
             SettingsKey.buddyScreenBrightnessPercent: SettingsDefaults.buddyScreenBrightnessPercent,

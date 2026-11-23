@@ -1350,6 +1350,7 @@ private struct AppearancePage: View {
     @AppStorage(SettingsKey.showClaudeQuota) private var showClaudeQuota = SettingsDefaults.showClaudeQuota
     @AppStorage(SettingsKey.claudeQuotaChip) private var claudeQuotaChip = SettingsDefaults.claudeQuotaChip
     @AppStorage(SettingsKey.collapsedWidthScale) private var collapsedWidthScale = SettingsDefaults.collapsedWidthScale
+    @AppStorage(SettingsKey.toolNameWidth) private var toolNameWidth = SettingsDefaults.toolNameWidth
     @AppStorage(SettingsKey.notchHeightMode) private var notchHeightModeRaw = SettingsDefaults.notchHeightMode
     @AppStorage(SettingsKey.customNotchHeight) private var customNotchHeight = SettingsDefaults.customNotchHeight
     @AppStorage(SettingsKey.notchAnimationSpeed) private var notchAnimationSpeed = SettingsDefaults.notchAnimationSpeed
@@ -1450,6 +1451,22 @@ private struct AppearancePage: View {
                         set: { collapsedWidthScale = Int($0) }
                     ), in: Double(NotchWidthScale.min)...Double(NotchWidthScale.max), step: Double(NotchWidthScale.step))
                     Text(l10n["collapsed_width_scale_desc"])
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(l10n["tool_name_width"])
+                        Spacer()
+                        Text("\(toolNameWidth)pt")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    Slider(value: Binding(
+                        get: { Double(toolNameWidth) },
+                        set: { toolNameWidth = Int($0) }
+                    ), in: Double(ToolNameSlot.min)...Double(ToolNameSlot.max), step: Double(ToolNameSlot.step))
+                    Text(l10n["tool_name_width_desc"])
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

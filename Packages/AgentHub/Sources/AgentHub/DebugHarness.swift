@@ -25,6 +25,8 @@ import CodeIslandCore
 
 enum PreviewScenario: String, CaseIterable {
     case working
+    /// A running tool with a long name, for the closed-bar width check.
+    case longtool
     case approval
     case question
     case completion
@@ -67,6 +69,9 @@ enum DebugHarness {
         switch scenario {
         case .working:
             applyWorking(to: appState)
+        case .longtool:
+            applyWorking(to: appState)
+            appState.sessions["preview-working"]?.currentTool = "mcp__claude_ai_Slack__slack_search_public_and_private"
         case .approval:
             applyApproval(to: appState)
         case .question:
