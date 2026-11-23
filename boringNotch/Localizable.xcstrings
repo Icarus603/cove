@@ -33418,6 +33418,38 @@
           }
         }
       }
+    },
+    "The picture or sound is encoded as %@, which the macOS player Cove uses cannot decode. The file itself is fine." : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "畫面或聲音用 %@ 編碼，Cove 使用的 macOS 播放引擎無法解碼。檔案本身沒有壞。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画面或声音用 %@ 编码，Cove 使用的 macOS 播放引擎无法解码。文件本身没有坏。"
+          }
+        }
+      }
+    },
+    "Play it in IINA or VLC, or convert it to H.264 MP4 with HandBrake or ffmpeg and add that." : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用 IINA 或 VLC 播放，或用 HandBrake／ffmpeg 轉成 H.264 的 MP4 後再新增。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可用 IINA 或 VLC 播放，或用 HandBrake／ffmpeg 转成 H.264 的 MP4 后再添加。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

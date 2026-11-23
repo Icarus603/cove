@@ -1023,6 +1023,13 @@ enum UISnapshot {
             }.padding(16).background(Color.black)
             await render(row, size: CGSize(width: 480, height: 142), name: "report-10-square-art", dir: dir, settle: 0.6)
         }
+        if let file = ProcessInfo.processInfo.environment["COVE_VP9_FILE"] {
+            let skipped = await SkippedFile.diagnoseMedia(file)
+            lines.append("diagnose \(skipped.name): reason=\(skipped.reason) detail=\(skipped.detail) :: \(skipped.explanation)")
+            let two = ImportReport(domain: .media, added: 625, alreadyInLibrary: 0, skipped: [skipped, skipped.withPath(file + ".copy.mp4")])
+            await render(ImportReportView(report: two) {}, size: CGSize(width: 460, height: 320), name: "report-11-small-window", dir: dir, settle: 0.8)
+            await render(ImportReportView(report: two) {}, size: CGSize(width: 620, height: 460), name: "report-12-default-window", dir: dir, settle: 0.8)
+        }
         // The mini player with a video playing: the video itself in the corner.
         if let clip = PlayerLibrary.shared.items.first(where: { $0.kind == .video }) {
             PlayerEngine.shared.volume = 0

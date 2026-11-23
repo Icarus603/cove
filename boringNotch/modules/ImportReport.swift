@@ -8,6 +8,7 @@
 //
 
 import AppKit
+import AVFoundation
 import SwiftUI
 
 /// Which library a file was being added to; the wording differs (play vs show).
@@ -28,11 +29,15 @@ struct SkippedFile: Equatable, Hashable, Identifiable {
         case notDownloaded
         /// The name says it should work, but its content could not be decoded.
         case damaged
+        /// A good file whose video or audio codec the system player lacks (VP9, AV1…); the codec is in `detail`.
+        case codec
     }
 
     let path: String
     let reason: Reason
     let domain: ImportDomain
+    /// The codec, for `.codec`.
+    var detail: String = ""
 
     var id: String { path }
     var url: URL { URL(fileURLWithPath: path) }
@@ -40,7 +45,9 @@ struct SkippedFile: Equatable, Hashable, Identifiable {
     var folder: String { (url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath }
     private var ext: String { url.pathExtension.uppercased() }
 
-    var isFormatProblem: Bool { reason == .format }
+    func withPath(_ newPath: String) -> SkippedFile { SkippedFile(path: newPath, reason: reason, domain: domain, detail: detail) }
+
+    var isFormatProblem: Bool { reason == .format || reason == .codec }
 
     /// Why a file the name said was fine could not be read, worked out from the file itself.
     static func diagnose(_ path: String, domain: ImportDomain) -> SkippedFile {
@@ -62,6 +69,28 @@ struct SkippedFile: Equatable, Hashable, Identifiable {
         return SkippedFile(path: path, reason: reason, domain: domain)
     }
 
+    /// For audio and video: like `diagnose`, but a file that has tracks the system cannot decode is told apart from a damaged one.
+    static func diagnoseMedia(_ path: String) async -> SkippedFile {
+        let base = diagnose(path, domain: .media)
+        guard base.reason == .damaged else { return base }
+        let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+        for type in [AVMediaType.video, .audio] {
+            for track in (try? await asset.loadTracks(withMediaType: type)) ?? [] {
+                guard (try? await track.load(.isPlayable)) == false else { continue }
+                for description in (try? await track.load(.formatDescriptions)) ?? [] {
+                    return SkippedFile(path: path, reason: .codec, domain: .media, detail: codecName(CMFormatDescriptionGetMediaSubType(description)))
+                }
+            }
+        }
+        return base
+    }
+
+    private static func codecName(_ subtype: FourCharCode) -> String {
+        let code = String(bytes: [24, 16, 8, 0].map { UInt8((subtype >> $0) & 0xFF) }, encoding: .ascii) ?? "?"
+        let known = ["vp09": "VP9", "vp08": "VP8", "av01": "AV1", "avc1": "H.264", "hvc1": "HEVC", "hev1": "HEVC", "Opus": "Opus", "opus": "Opus", "fLaC": "FLAC", "vorb": "Vorbis"]
+        return known[code] ?? code.trimmingCharacters(in: .whitespaces).uppercased()
+    }
+
     private static let rawFormats: Set<String> = ["RAW", "CR2", "CR3", "NEF", "ARW", "DNG", "ORF", "RW2", "RAF"]
     private static let designFormats: Set<String> = ["PSD", "SVG", "AI", "EPS"]
 
@@ -77,6 +106,7 @@ struct SkippedFile: Equatable, Hashable, Identifiable {
                 if Self.designFormats.contains(ext) { return String(localized: "\(ext) is a design file rather than a picture.") }
                 return String(localized: "\(ext) pictures are not supported yet.")
             }
+        case .codec: return String(localized: "The picture or sound is encoded as \(detail), which the macOS player Cove uses cannot decode. The file itself is fine.")
         case .missing: return String(localized: "The file was gone by the time Cove read it (moved or deleted).")
         case .noPermission: return String(localized: "macOS does not allow Cove to read this file.")
         case .empty: return String(localized: "The file is empty (0 bytes).")
@@ -99,6 +129,7 @@ struct SkippedFile: Equatable, Hashable, Identifiable {
                 if Self.rawFormats.contains(ext) { return String(localized: "Export it as JPEG or HEIC from your camera app or Apple Photos, then add that.") }
                 return String(localized: "Export it as PNG or JPEG, then add that.")
             }
+        case .codec: return String(localized: "Play it in IINA or VLC, or convert it to H.264 MP4 with HandBrake or ffmpeg and add that.")
         case .missing: return String(localized: "Find where it went and add it again.")
         case .noPermission: return String(localized: "Check its permissions in Finder (Get Info), or copy it somewhere you own.")
         case .empty: return String(localized: "It was probably not fully downloaded or copied. Get the file again.")
@@ -212,7 +243,7 @@ final class ImportReportWindowController: NSObject, NSWindowDelegate {
                                   styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             window.title = String(localized: "Files not added")
             window.isReleasedWhenClosed = false
-            window.minSize = NSSize(width: 480, height: 300)
+            window.contentMinSize = NSSize(width: 460, height: 320)
             let hosting = NSHostingController(rootView: view)
             hosting.sizingOptions = []
             window.contentViewController = hosting
@@ -220,6 +251,8 @@ final class ImportReportWindowController: NSObject, NSWindowDelegate {
             window.center()
             self.window = window
         }
+        // Always open at a size where the list, the counts and the buttons all fit, whatever size it was left at.
+        if window?.isVisible != true { window?.setContentSize(NSSize(width: 620, height: 460)); window?.center() }
         AppActivation.windowOpened("import-report")
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -243,7 +276,7 @@ struct ImportReportView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            header.fixedSize(horizontal: false, vertical: true)
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
@@ -268,10 +301,10 @@ struct ImportReportView: View {
                 .padding(18)
             }
             Divider()
-            footer
+            footer.fixedSize(horizontal: false, vertical: true)
         }
         .tint(Color.effectiveAccent)
-        .frame(minWidth: 480, minHeight: 300)
+        .frame(minWidth: 400, minHeight: 240)
     }
 
     private var header: some View {

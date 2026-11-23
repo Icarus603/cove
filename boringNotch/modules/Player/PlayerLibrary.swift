@@ -163,7 +163,7 @@ final class PlayerLibrary: ObservableObject {
                 if let probe {
                     pending.append(makeItem(url: url, probe: probe))
                 } else {
-                    summary.skipped.append(SkippedFile.diagnose(url.path, domain: .media))
+                    summary.skipped.append(await SkippedFile.diagnoseMedia(url.path))
                 }
                 if pending.count >= 20 { append(pending); pending = [] }
                 importProgress = (done, fresh.count)
