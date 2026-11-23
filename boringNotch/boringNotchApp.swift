@@ -21,14 +21,19 @@ struct DynamicNotchApp: App {
     let updaterController: SPUStandardUpdaterController
 
     init() {
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
-        // Sparkle's own schedule only checks once the interval has passed since the last check, so a release made a few
-        // minutes after it was never picked up on launch. Check in the background at every launch too; with automatic
-        // downloads on this is silent and the update installs when the app next quits.
-        #if !DEBUG
-        updaterController.updater.checkForUpdatesInBackground()
+        // Debug builds do not run the updater: they share this app's preferences (and so its update schedule) with the
+        // installed copy, and one would otherwise reset the installed copy's "last checked" time on every run.
+        #if DEBUG
+        let startUpdater = false
+        #else
+        let startUpdater = true
         #endif
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: startUpdater, updaterDelegate: AutoUpdater.shared, userDriverDelegate: nil)
+        // Sparkle's own schedule only checks once the interval has passed since the last check, so a release made a few
+        // minutes after it was never picked up on launch. Check in the background at every launch too. With automatic
+        // downloads on this is silent, and `AutoUpdater` then installs the update at the next quiet moment.
+        if startUpdater { updaterController.updater.checkForUpdatesInBackground() }
 
         // Initialize the settings window controller with the updater controller
         SettingsWindowController.shared.setUpdaterController(updaterController)
