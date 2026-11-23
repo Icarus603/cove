@@ -119,6 +119,7 @@ struct PhotoMenu: View {
     var body: some View {
         let targets = model.targets(for: id)
         Button { model.open(id) } label: { Label("Open", systemImage: "photo") }
+        if targets.count == 1 { Button { model.edit(id) } label: { Label("Edit…", systemImage: "slider.horizontal.3") } }
         Divider()
         Menu {
             Button { model.newAlbum(named: "", with: targets) } label: { Label("New album…", systemImage: "plus") }

@@ -58,6 +58,11 @@ enum AppModules {
         plugins.reload()
 
         AgentRuntime.shared.presentHost = { present(moduleID: "builtin.agents") }
+        // The desktop pet's "Open in the notch": the user asked for it, so it stays open (it is not an attention pop-up).
+        AgentsModule.onOpenInNotch = {
+            BoringViewCoordinator.shared.currentView = NotchViews(id: "builtin.agents")
+            AppDelegate.current?.openNotchEverywhere()
+        }
         AgentRuntime.shared.isHostOnScreen = { AppDelegate.current?.isAnyNotchOpen ?? false }
 
         // Agent shortcuts are recorded in Settings → Shortcuts like the host's own.

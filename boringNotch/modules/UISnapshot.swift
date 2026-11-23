@@ -224,6 +224,26 @@ enum UISnapshot {
                 NSApp.terminate(nil)
                 return
             }
+            // COVE_SHOT_PET=1 (with -desktopPetEnabled YES on the command line): the desktop pet and its bubble, off screen.
+            if env["COVE_SHOT_PET"] != nil {
+                await petShots(dir: dir)
+                try? "done".write(toFile: dir + "/DONE", atomically: true, encoding: .utf8)
+                NSApp.terminate(nil)
+                return
+            }
+            if env["COVE_SHOT_EDIT_UI"] != nil {
+                await editorShots(dir: dir)
+                try? "done".write(toFile: dir + "/DONE", atomically: true, encoding: .utf8)
+                NSApp.terminate(nil)
+                return
+            }
+            if env["COVE_SHOT_EDIT_LOGIC"] != nil {
+                let report = await PhotoChecks.editing()
+                try? report.write(toFile: dir + "/edit_logic.txt", atomically: true, encoding: .utf8)
+                try? "done".write(toFile: dir + "/DONE", atomically: true, encoding: .utf8)
+                NSApp.terminate(nil)
+                return
+            }
             if env["COVE_SHOT_ALBUM_ORDER"] != nil {
                 let report = await PhotoChecks.albumOrder()
                 try? report.write(toFile: dir + "/album_order.txt", atomically: true, encoding: .utf8)
@@ -1014,6 +1034,91 @@ enum UISnapshot {
     /// One pass over the new screens for a human to look at: captures only, no input sent anywhere. Run once.
     private static func windowShotOffscreen<V: View>(_ root: V, size: CGSize, name: String, dir: String) async {
         await render(root, size: size, name: name, dir: dir, settle: 0.6)
+    }
+
+    /// The photo editor off screen: both pages, with and without a crop, at a roomy and at the smallest window size.
+    static func editorShots(dir: String) async {
+        // A landscape to edit: sky, sun, hills, water.
+        let w = 1600, h = 1067
+        let art = NSImage(size: NSSize(width: w, height: h))
+        art.lockFocus()
+        NSGradient(colors: [NSColor(red: 0.16, green: 0.2, blue: 0.5, alpha: 1), NSColor(red: 0.9, green: 0.5, blue: 0.4, alpha: 1)])?.draw(in: NSRect(x: 0, y: CGFloat(h) * 0.3, width: CGFloat(w), height: CGFloat(h) * 0.7), angle: 90)
+        NSColor(red: 1, green: 0.9, blue: 0.6, alpha: 1).setFill(); NSBezierPath(ovalIn: NSRect(x: 1050, y: 560, width: 190, height: 190)).fill()
+        NSColor(red: 0.12, green: 0.2, blue: 0.25, alpha: 1).setFill()
+        let hills = NSBezierPath(); hills.move(to: NSPoint(x: 0, y: 330)); hills.curve(to: NSPoint(x: 700, y: 360), controlPoint1: NSPoint(x: 200, y: 520), controlPoint2: NSPoint(x: 500, y: 300))
+        hills.curve(to: NSPoint(x: 1600, y: 320), controlPoint1: NSPoint(x: 950, y: 470), controlPoint2: NSPoint(x: 1300, y: 280)); hills.line(to: NSPoint(x: 1600, y: 0)); hills.line(to: NSPoint(x: 0, y: 0)); hills.close(); hills.fill()
+        NSGradient(colors: [NSColor(red: 0.2, green: 0.45, blue: 0.5, alpha: 1), NSColor(red: 0.05, green: 0.12, blue: 0.2, alpha: 1)])?.draw(in: NSRect(x: 0, y: 0, width: CGFloat(w), height: 300), angle: 90)
+        art.unlockFocus()
+        let cg = art.cgImage(forProposedRect: nil, context: nil, hints: nil)!
+        let photo = Photo(id: 1, path: "/Users/you/Pictures/Lake at dusk.jpg", name: "Lake at dusk.jpg", width: w, height: h, taken: Date(), added: Date(), size: 1, isMissing: false)
+
+        func shot(_ session: PhotoEditSession, name: String, width: CGFloat, height: CGFloat) async {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            let hosting = NSHostingController(rootView: PhotoEditorView(session: session).ignoresSafeArea())
+            hosting.sizingOptions = []
+            window.contentViewController = hosting
+            window.setContentSize(NSSize(width: width, height: height))
+            window.setFrameOrigin(NSPoint(x: -20_000, y: -20_000))
+            window.orderFront(nil)
+            await session.settle()
+            await sleep(1.5)
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            p.arguments = ["-x", "-o", "-l\(window.windowNumber)", "\(dir)/\(name).png"]
+            try? p.run(); p.waitUntilExit()
+            window.close()
+        }
+        func session() async -> PhotoEditSession {
+            let s = PhotoEditSession(photo: photo)
+            s.use(CIImage(cgImage: cg))
+            await s.settle()
+            return s
+        }
+        let a = await session()
+        await shot(a, name: "edit-1-crop-whole", width: 1180, height: 740)
+        let b = await session(); b.choose(.ratio(4, 3)); b.setLandscape(false); await b.settle()
+        await shot(b, name: "edit-2-crop-43", width: 1180, height: 740)
+        let c = await session(); c.tab = .adjust; c.params.brightness = 0.2; c.params.saturation = 0.35; c.params.warmth = 0.4; c.params.contrast = 0.15; c.choose(.ratio(16, 9)); c.tab = .adjust
+        await c.settle()
+        await shot(c, name: "edit-3-adjust", width: 1180, height: 740)
+        let d = await session(); d.choose(.ratio(1, 1)); d.rotate(clockwise: true); d.choose(.ratio(3, 2)); await d.settle()
+        await shot(d, name: "edit-4-small-window", width: 820, height: 540)
+    }
+
+    /// The desktop pet in each pose, and the bubble with each kind of card.
+    static func petShots(dir: String) async {
+        DesktopPet.start()
+        DesktopPet.debugUseOffscreen()
+        let runtime = AgentRuntime.shared
+        func capture(_ name: String, _ number: Int?) {
+            guard let number else { return }
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            p.arguments = ["-x", "-o", "-l\(number)", "\(dir)/\(name).png"]
+            try? p.run(); p.waitUntilExit()
+        }
+        var log: [String] = ["enabled: \(DesktopPet.isEnabled)"]
+        func scene(_ name: String, scenario: String, keepCollapsed: Bool, open: Bool = false, celebrate: Bool = false, hover: Bool = false) async {
+            runtime.debugApply(scenario: scenario, keepCollapsed: keepCollapsed)
+            DesktopPet.debugUseOffscreen()
+            if open { DesktopPet.debugOpenList() }
+            if celebrate { DesktopPet.debugCelebrate() }
+            DesktopPet.debugHover(hover)
+            await sleep(1.6)
+            capture("pet-\(name)", DesktopPet.debugPetWindowNumber)
+            capture("pet-\(name)-bubble", DesktopPet.debugBubbleWindowNumber)
+            log.append("\(name): pet window \(DesktopPet.debugPetWindowNumber.map(String.init) ?? "none"), bubble \(DesktopPet.debugBubbleWindowNumber.map(String.init) ?? "none")")
+        }
+        await scene("1-idle", scenario: "none", keepCollapsed: true)
+        await scene("2-hover", scenario: "none", keepCollapsed: true, hover: true)
+        await scene("3-working", scenario: "working", keepCollapsed: true)
+        await scene("4-approval", scenario: "approval", keepCollapsed: false)
+        await scene("5-question", scenario: "question", keepCollapsed: false)
+        await scene("6-completion", scenario: "completion", keepCollapsed: false)
+        await scene("7-celebrate", scenario: "none", keepCollapsed: true, celebrate: true)
+        await scene("8-list", scenario: "multi", keepCollapsed: true, open: true)
+        try? log.joined(separator: "\n").write(toFile: dir + "/pet.txt", atomically: true, encoding: .utf8)
     }
 
     static func importReportShots(playerFixtures: URL, photoFixtures: URL, dir: String) async {

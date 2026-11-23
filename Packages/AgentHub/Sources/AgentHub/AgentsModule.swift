@@ -25,9 +25,17 @@ public final class AgentsModule: NotchModule {
 
     public var changes: AnyPublisher<Void, Never> { subject.eraseToAnyPublisher() }
 
+    /// Set by the app: shows the notch on the Agents tab (the desktop pet's "Open in the notch").
+    public static var onOpenInNotch: (() -> Void)?
+
     public var attention: ModuleAttention {
         let state = runtime.appState
         let defaults = UserDefaults.standard
+        // With the desktop pet on, requests are answered beside the pet; the notch does not open for them.
+        if DesktopPetController.isEnabled {
+            if state.surface != .collapsed || !state.permissionQueue.isEmpty || !state.questionQueue.isEmpty { return .active }
+            return state.sessions.values.contains { $0.status != .idle } ? .active : .none
+        }
         let wantsPermission = defaults.object(forKey: SettingsKey.autoExpandOnPermission) as? Bool ?? SettingsDefaults.autoExpandOnPermission
         let wantsQuestion = defaults.object(forKey: SettingsKey.autoExpandOnQuestion) as? Bool ?? SettingsDefaults.autoExpandOnQuestion
         switch state.surface {
@@ -41,9 +49,16 @@ public final class AgentsModule: NotchModule {
         return state.sessions.values.contains { $0.status != .idle } ? .active : .none
     }
 
+    private var petObserver: NSObjectProtocol?
+
     public init() {
         runtime.start()
         observe()
+        // The pet being turned on or off changes what the notch shows and when it opens: have the host read it again.
+        petObserver = NotificationCenter.default.addObserver(forName: .desktopPetSettingsChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.subject.send() }
+        }
+        DesktopPetController.shared.start()
     }
 
     /// Re-arms Observation tracking: AppState is @Observable, so any change to what

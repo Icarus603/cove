@@ -112,11 +112,12 @@ struct AgentCompactBar: View {
 extension AgentsModule {
     /// There is something to show next to the notch.
     public var isCompactBarVisible: Bool {
-        !AgentRuntime.shared.standingAside && !AgentRuntime.shared.appState.sessions.isEmpty
+        // With the desktop pet on, the mascot lives there and not next to the notch.
+        !DesktopPetController.isEnabled && !AgentRuntime.shared.standingAside && !AgentRuntime.shared.appState.sessions.isEmpty
     }
 
     /// An agent is working or waiting, as opposed to every session sitting idle.
-    public var isCompactBarBusy: Bool { AgentRuntime.shared.appState.status != .idle }
+    public var isCompactBarBusy: Bool { !DesktopPetController.isEnabled && AgentRuntime.shared.appState.status != .idle }
 
     /// CodeIsland's collapsed bar sized for this notch. The host draws it inside the closed notch shape.
     public func makeCompactBar(notchWidth: CGFloat, notchHeight: CGFloat, screenWidth: CGFloat, hasNotch: Bool) -> AnyView {

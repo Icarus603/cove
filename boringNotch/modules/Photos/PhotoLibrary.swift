@@ -92,6 +92,9 @@ final class PhotoLibrary: ObservableObject {
 
     func photo(_ id: Int64) async -> Photo? { await photos([id]).first }
 
+    /// The id of the photo stored at this path (already standardised), if it is in the library.
+    func id(forPath path: String) async -> Int64? { (try? await store?.idsByPath([path]))?[path] }
+
     // MARK: Images
 
     func thumbnail(for photo: Photo) async -> NSImage? {

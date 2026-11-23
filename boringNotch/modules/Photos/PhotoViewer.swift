@@ -57,6 +57,7 @@ struct PhotoViewer: View {
     @FocusState private var focused: Bool
 
     private var isGIF: Bool { photo?.url.pathExtension.lowercased() == "gif" }
+    private var canEdit: Bool { photo.map { !$0.isMissing && PhotoExporter.canEdit($0.url) } ?? false }
 
     var body: some View {
         ZStack {
@@ -210,6 +211,7 @@ struct PhotoViewer: View {
 
     /// Plain scrolling pans a zoomed photo; at fit size a swipe (or the wheel) moves to the next or previous one.
     private func handleScroll(dx: CGFloat, dy: CGFloat) {
+        guard model.editing == nil else { return }
         if scale > 1.01 {
             offset = CGSize(width: offset.width + dx, height: offset.height + dy)
             return
@@ -228,6 +230,7 @@ struct PhotoViewer: View {
     // MARK: Keys
 
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        guard model.editing == nil else { return .ignored }   // the editor is over the picture; its keys are its own
         switch press.key {
         case .leftArrow: model.step(-1); model.restartSlideshowTimer(); return .handled
         case .rightArrow: model.step(1); model.restartSlideshowTimer(); return .handled
@@ -239,6 +242,7 @@ struct PhotoViewer: View {
         }
         switch press.characters {
         case "i": showInfo.toggle(); return .handled
+        case "e": if canEdit, let id = model.viewing { model.edit(id) }; return .handled
         case "f": PhotoWindowController.shared.toggleFullScreen(); return .handled
         case "+", "=": zoom(to: scale * 1.25); return .handled
         case "-": zoom(to: scale / 1.25); return .handled
@@ -263,6 +267,17 @@ struct PhotoViewer: View {
                 }
             }
             Spacer()
+            Button { if let id = model.viewing { model.edit(id) } } label: {
+                Label("Edit", systemImage: "slider.horizontal.3")
+                    .font(.system(size: 12, weight: .semibold)).padding(.horizontal, 12).frame(height: 28)
+                    .background(Capsule().fill(Color.white.opacity(0.92)))
+                    .foregroundStyle(Color.black)
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .opacity(canEdit ? 1 : 0.35)
+            .disabled(!canEdit)
+            .help(Text(isGIF ? "Animated GIFs cannot be edited" : "Edit this photo (E)"))
             floating {
                 HStack(spacing: 0) {
                     Menu {

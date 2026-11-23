@@ -19,6 +19,8 @@ struct MascotView: View {
     let source: String
     let status: MascotAgentStatus
     var size: CGFloat = 27
+    /// nil follows the notch's animation gate; the desktop pet decides for itself.
+    var animating: Bool? = nil
     @AppStorage(SettingsKey.mascotSpeed) private var speedPct = SettingsDefaults.mascotSpeed
     @ObservedObject private var animationGate = MascotAnimationGate.shared
 
@@ -82,7 +84,7 @@ struct MascotView: View {
             }
         }
         .environment(\.mascotSpeed, Double(speedPct) / 100.0)
-        .environment(\.mascotAnimationsActive, animationGate.animationsActive)
+        .environment(\.mascotAnimationsActive, animating ?? animationGate.animationsActive)
         .environment(\.mascotAnimationEpoch, animationGate.epoch)
     }
 }

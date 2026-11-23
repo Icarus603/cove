@@ -147,7 +147,11 @@ struct PhotoWindowView: View {
         .overlay {
             if model.viewing != nil { PhotoViewer(model: model).ignoresSafeArea().transition(.opacity) }
         }
+        .overlay {
+            if let id = model.editing { PhotoEditorHost(model: model, photoID: id).ignoresSafeArea().transition(.opacity) }
+        }
         .animation(.easeInOut(duration: 0.15), value: model.viewing)
+        .animation(.easeInOut(duration: 0.15), value: model.editing)
         .frame(minWidth: 820, minHeight: 520)
         .tint(Color.effectiveAccent)
         .onAppear { applyPending(); if PhotoWindowView.debugSelectAll { Task { try? await Task.sleep(nanoseconds: 800_000_000); model.selectAll() } } }
@@ -396,5 +400,31 @@ final class AddToAlbumChooser: NSObject {
         if tag == newTag { return .new(nameField.stringValue) }
         if tag >= 1, tag <= albums.count { return .existing(albums[tag - 1].id) }
         return .none
+    }
+}
+
+
+/// Loads the photo being edited and hands it to the editor; when a copy is saved, opens the copy.
+private struct PhotoEditorHost: View {
+    @ObservedObject var model: PhotoBrowserModel
+    let photoID: Int64
+    @State private var photo: Photo?
+
+    var body: some View {
+        Group {
+            if let photo {
+                PhotoEditorView(photo: photo,
+                                onClose: { model.closeEditor() },
+                                onSaved: { newID, name in
+                                    model.closeEditor()
+                                    model.open(newID)
+                                    model.show(toast: String(localized: "Saved “\(name)”"))
+                                })
+                    .id(photo.id)
+            } else {
+                Color(white: 0.04)
+            }
+        }
+        .task(id: photoID) { photo = await PhotoLibrary.shared.photo(photoID) }
     }
 }

@@ -25,6 +25,8 @@ final class PhotoBrowserModel: ObservableObject {
     @Published var selection: Set<Int64> = []
     /// The photo open in the viewer, if any.
     @Published var viewing: Int64?
+    /// The photo being edited (always the one open in the viewer, which stays underneath), if any.
+    @Published var editing: Int64?
     @Published var toast: String?
     @Published private(set) var slideshowActive = false
     /// The viewer's controls are shown, or have faded during a slideshow.
@@ -92,7 +94,7 @@ final class PhotoBrowserModel: ObservableObject {
             ids = new
             isLoading = false
             selection.formIntersection(Set(new))
-            if let open = viewing, !new.contains(open) { viewing = nil; stopSlideshow() }
+            if let open = viewing, !new.contains(open), editing == nil { viewing = nil; stopSlideshow() }
         }
     }
 
@@ -188,7 +190,20 @@ final class PhotoBrowserModel: ObservableObject {
         startChromeTimer()
     }
 
+    /// Opens the editor on a photo (opening it in the viewer first).
+    func edit(_ id: Int64) {
+        Task {
+            guard let photo = await library.photo(id), PhotoExporter.canEdit(photo.url) else { return }
+            stopSlideshow()
+            if viewing != id { open(id) }
+            editing = id
+        }
+    }
+
+    func closeEditor() { editing = nil }
+
     func closeViewer() {
+        editing = nil
         viewing = nil
         stopSlideshow()
         chromeTimer?.invalidate(); chromeTimer = nil

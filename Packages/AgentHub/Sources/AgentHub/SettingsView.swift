@@ -1753,8 +1753,31 @@ private struct MascotsPage: View {
         ("DeepSeek", "dsh", "DeepSeek Harness", Color(red: 0.302, green: 0.42, blue: 0.996)),
     ]
 
+    @AppStorage(SettingsKey.desktopPetEnabled) private var petEnabled = SettingsDefaults.desktopPetEnabled
+    @AppStorage(SettingsKey.desktopPetSize) private var petSize = SettingsDefaults.desktopPetSize
+    @AppStorage(SettingsKey.desktopPetWhen) private var petWhen = SettingsDefaults.desktopPetWhen
+    @AppStorage(SettingsKey.desktopPetHideInFullscreen) private var petHideInFullscreen = SettingsDefaults.desktopPetHideInFullscreen
+
     var body: some View {
         Form {
+            Section(l10n["pet_title"]) {
+                Toggle(isOn: $petEnabled) {
+                    Text(l10n["pet_enable"])
+                    Text(l10n["pet_enable_desc"])
+                }
+                if petEnabled {
+                    Picker(l10n["pet_size"], selection: $petSize) {
+                        ForEach(PetSize.allCases, id: \.rawValue) { size in Text(l10n[size.labelKey]).tag(size.rawValue) }
+                    }
+                    .pickerStyle(.segmented)
+                    Picker(l10n["pet_when"], selection: $petWhen) {
+                        Text(l10n["pet_when_always"]).tag("always")
+                        Text(l10n["pet_when_busy"]).tag("busy")
+                    }
+                    Toggle(l10n["pet_fullscreen"], isOn: $petHideInFullscreen)
+                    Button(l10n["pet_reset"]) { DesktopPetController.shared.resetPosition() }
+                }
+            }
             Section {
                 Picker(l10n["preview_status"], selection: $previewStatus) {
                     Text(l10n["processing"]).tag(AgentStatus.processing)

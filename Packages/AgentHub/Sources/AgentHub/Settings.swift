@@ -112,6 +112,13 @@ enum SettingsKey {
     // Mascot
     static let mascotSpeed = "mascotSpeed"
 
+    // Desktop pet: the default mascot on the desktop, with the agent requests answered beside it
+    static let desktopPetEnabled = "desktopPetEnabled"
+    static let desktopPetSize = "desktopPetSize"                       // 0 small, 1 medium, 2 large
+    static let desktopPetWhen = "desktopPetWhen"                       // "always" or "busy"
+    static let desktopPetHideInFullscreen = "desktopPetHideInFullscreen"
+    static let desktopPetPosition = "desktopPetPosition"               // "dx,dy,displayUUID"
+
     // Session grouping
     static let sessionGroupingMode = "sessionGroupingMode"
 
@@ -226,6 +233,10 @@ struct SettingsDefaults {
     static let showTaskProgress = true
 
     static let mascotSpeed = 100  // percentage: 0–300, 0 = silent
+    static let desktopPetEnabled = false
+    static let desktopPetSize = 1
+    static let desktopPetWhen = "always"
+    static let desktopPetHideInFullscreen = true
 
     static let sessionGroupingMode = "all"
 
@@ -343,6 +354,10 @@ class SettingsManager {
             SettingsKey.appleCompanionEnabled: SettingsDefaults.appleCompanionEnabled,
             SettingsKey.appleCompanionHeartbeatSeconds: SettingsDefaults.appleCompanionHeartbeatSeconds,
             SettingsKey.defaultSource: SettingsDefaults.defaultSource,
+            SettingsKey.desktopPetEnabled: SettingsDefaults.desktopPetEnabled,
+            SettingsKey.desktopPetSize: SettingsDefaults.desktopPetSize,
+            SettingsKey.desktopPetWhen: SettingsDefaults.desktopPetWhen,
+            SettingsKey.desktopPetHideInFullscreen: SettingsDefaults.desktopPetHideInFullscreen,
             SettingsKey.autoApproveTools: SettingsDefaults.autoApproveTools,
             SettingsKey.autoApproveSources: SettingsDefaults.autoApproveSources,
             SettingsKey.excludedHookCwdSubstrings: SettingsDefaults.excludedHookCwdSubstrings,
