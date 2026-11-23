@@ -34,7 +34,8 @@ final class PlayerLibrary: ObservableObject {
 
     private let directory: URL
     private var saveTask: Task<Void, Never>?
-    private let artworkCache = NSCache<NSUUID, NSImage>()
+    /// Small thumbnails, so a few hundred cost a few MB; the limit keeps scrolling through a library of ten thousand from filling memory.
+    private let artworkCache: NSCache<NSUUID, NSImage> = { let cache = NSCache<NSUUID, NSImage>(); cache.countLimit = 400; return cache }()
     private var byID: [UUID: Int] = [:]
 
     /// `directory` is for tests, which use a folder of their own instead of the user's library.
@@ -73,20 +74,32 @@ final class PlayerLibrary: ObservableObject {
         byID = Dictionary(uniqueKeysWithValues: items.enumerated().map { ($1.id, $0) })
     }
 
+    /// Every write to the library file goes through this queue, in order, off the main thread: encoding a few thousand items
+    /// and writing them atomically took tens of milliseconds, and it happened every few seconds while something played.
+    private static let writeQueue = DispatchQueue(label: "app.cove.player.library.write", qos: .utility)
+
     /// Writes soon, and once for a burst of changes.
     private func scheduleSave() {
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 600_000_000)
-            guard !Task.isCancelled else { return }
-            self?.saveNow()
+            guard !Task.isCancelled, let self else { return }
+            let file = FileFormat(items: self.items, playlists: self.playlists)   // a snapshot taken here, written elsewhere
+            let url = self.libraryFile
+            Self.writeQueue.async { Self.write(file, to: url) }
         }
     }
 
+    /// Writes now and returns when it is on disk (pausing, quitting, tests). Waits behind any write already queued.
     func saveNow() {
         let file = FileFormat(items: items, playlists: playlists)
+        let url = libraryFile
+        Self.writeQueue.sync { Self.write(file, to: url) }
+    }
+
+    private nonisolated static func write(_ file: FileFormat, to url: URL) {
         guard let data = try? JSONEncoder().encode(file) else { return }
-        try? data.write(to: libraryFile, options: .atomic)
+        try? data.write(to: url, options: .atomic)
     }
 
     // MARK: Lookup
@@ -173,7 +186,13 @@ final class PlayerLibrary: ObservableObject {
     @discardableResult
     func importURLs(_ urls: [URL]) async -> ImportSummary {
         var summary = ImportSummary()
-        let candidates = Self.collectFiles(urls, summary: &summary)
+        // Walking folders and asking about every file is disk work: not on the main thread.
+        let (candidates, skippedByFormat) = await Task.detached(priority: .userInitiated) { () -> ([URL], [SkippedFile]) in
+            var found = ImportSummary()
+            let files = Self.collectFiles(urls, summary: &found)
+            return (files, found.skipped)
+        }.value
+        summary.skipped = skippedByFormat
         var known = Set(items.map(\.path))
         var fresh: [URL] = []
         for url in candidates {
@@ -201,7 +220,8 @@ final class PlayerLibrary: ObservableObject {
                     summary.skipped.append(await SkippedFile.diagnoseMedia(url.path))
                 }
                 if pending.count >= 20 { append(pending); pending = [] }
-                importProgress = (done, fresh.count)
+                // The count is shown, not every file: a redraw per file of a big import redrew (and re-sorted) the library list.
+                if done % 10 == 0 || done == fresh.count { importProgress = (done, fresh.count) }
                 _ = startNext()
             }
         }
@@ -277,11 +297,35 @@ final class PlayerLibrary: ObservableObject {
         return found
     }
 
-    /// Looks for every item's file (and follows bookmarks); the ones not found are listed in `missing`.
+    /// What looking for one file found. Done off the main thread: a library on a network drive can take seconds.
+    private enum Found { case here, moved(path: String, bookmark: Data?), gone }
+
+    private nonisolated static func look(path: String, bookmark: Data?) -> Found {
+        if FileManager.default.fileExists(atPath: path) { return .here }
+        guard let bookmark else { return .gone }
+        var stale = false
+        guard let found = try? URL(resolvingBookmarkData: bookmark, options: [.withoutUI, .withoutMounting], relativeTo: nil, bookmarkDataIsStale: &stale),
+              FileManager.default.fileExists(atPath: found.path) else { return .gone }
+        return .moved(path: found.path, bookmark: stale ? (try? found.bookmarkData()) : nil)
+    }
+
+    /// Looks for every item's file (and follows bookmarks); the ones not found are listed in `missing`. The looking happens in
+    /// the background; only the result comes back to the main thread.
     func checkAvailability() async {
+        let snapshot = items.map { ($0.id, $0.path, $0.bookmark) }
+        let results = await Task.detached(priority: .utility) { snapshot.map { ($0.0, Self.look(path: $0.1, bookmark: $0.2)) } }.value
         var gone: Set<UUID> = []
-        for item in items where resolveURL(for: item.id) == nil { gone.insert(item.id) }
+        var changed = false
+        for (id, found) in results {
+            switch found {
+            case .here: break
+            case .gone: gone.insert(id)
+            case .moved(let path, let bookmark):
+                if let index = byID[id] { items[index].path = path; if let bookmark { items[index].bookmark = bookmark }; changed = true }
+            }
+        }
         if gone != missing { missing = gone }
+        if changed { scheduleSave() }
     }
 
     /// Points an item at a file the user picked after it went missing.
@@ -398,6 +442,21 @@ final class PlayerLibrary: ObservableObject {
     // MARK: Artwork
 
     private func artworkURL(_ id: UUID) -> URL { artworkDirectory.appendingPathComponent(id.uuidString + ".jpg") }
+
+    /// What is in memory already, never touching the disk (what a row asks for while it is drawn).
+    func cachedArtwork(for item: MediaItem) -> NSImage? {
+        item.hasArtwork ? artworkCache.object(forKey: item.id as NSUUID) : nil
+    }
+
+    /// Reads a thumbnail in the background and keeps it. A row shows its placeholder until this comes back.
+    func loadArtwork(for item: MediaItem) async -> NSImage? {
+        guard item.hasArtwork else { return nil }
+        if let cached = artworkCache.object(forKey: item.id as NSUUID) { return cached }
+        let url = artworkURL(item.id)
+        let image = await Task.detached(priority: .userInitiated) { NSImage(contentsOf: url) }.value
+        if let image { artworkCache.setObject(image, forKey: item.id as NSUUID) }
+        return image
+    }
 
     func artwork(for item: MediaItem) -> NSImage? {
         guard item.hasArtwork else { return nil }

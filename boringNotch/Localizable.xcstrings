@@ -31864,28 +31864,6 @@
         }
       }
     },
-    "Add songs" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Add songs"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "加入歌曲"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加歌曲"
-          }
-        }
-      }
-    },
     "Add to Playlist" : {
       "localizations" : {
         "en" : {
@@ -31941,13 +31919,13 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在加入歌曲到「%@」"
+            "value" : "正在把影片或音訊加入「%@」"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在添加歌曲到“%@”"
+            "value" : "正在把视频或音频添加到“%@”"
           }
         }
       }
@@ -31992,50 +31970,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "全部项目"
-          }
-        }
-      }
-    },
-    "Choose songs from your library to put in it." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose songs from your library to put in it."
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "從你的資料庫挑選歌曲放進來。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从你的资料库挑选歌曲放进来。"
-          }
-        }
-      }
-    },
-    "Choose tracks from All Items" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose tracks from All Items"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "從「全部項目」挑選歌曲"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从“全部项目”挑选歌曲"
           }
         }
       }
@@ -32656,28 +32590,6 @@
         }
       }
     },
-    "The tracks stay in your library." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The tracks stay in your library."
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "歌曲會留在你的資料庫中。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "歌曲会留在你的资料库中。"
-          }
-        }
-      }
-    },
     "This playlist is empty" : {
       "localizations" : {
         "en" : {
@@ -32696,28 +32608,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "这个播放列表是空的"
-          }
-        }
-      }
-    },
-    "This playlist is empty.\nSelect tracks in All Items, then choose Add to Playlist." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This playlist is empty.\nSelect tracks in All Items, then choose Add to Playlist."
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "這個播放清單是空的。\n在「全部項目」中選取歌曲，再選擇「加入播放清單」。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这个播放列表是空的。\n在“全部项目”中选择歌曲，再选择“加入播放列表”。"
           }
         }
       }
@@ -34551,6 +34441,86 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请先选一个比例"
+          }
+        }
+      }
+    },
+    "Choose from All Items" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從「全部項目」挑選"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从“全部项目”挑选"
+          }
+        }
+      }
+    },
+    "Add video or audio" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入影片或音訊"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加视频或音频"
+          }
+        }
+      }
+    },
+    "Choose video or audio from your library to put in it." : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從你的資料庫挑選影片或音訊放進來。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从你的资料库挑选视频或音频放进来。"
+          }
+        }
+      }
+    },
+    "The video and audio stay in your library." : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "影片和音訊都會留在你的資料庫中。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "视频和音频都会留在你的资料库中。"
+          }
+        }
+      }
+    },
+    "This playlist is empty.\nSelect video or audio in All Items, then choose Add to Playlist." : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這個播放清單是空的。\n在「全部項目」中選取影片或音訊，再選擇「加入播放清單」。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个播放列表是空的。\n在“全部项目”中选择视频或音频，再选择“添加到播放列表”。"
           }
         }
       }

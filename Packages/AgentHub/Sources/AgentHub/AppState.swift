@@ -517,6 +517,7 @@ final class AppState {
                 self?.cleanupIdleSessions()
             }
         }
+        cleanupTimer?.tolerance = 1.5   // a housekeeping tick can wait: this lets the system fold it into other wake-ups
     }
 
     /// Agents whose tracked process is a long-lived daemon rather than a

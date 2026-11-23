@@ -137,7 +137,11 @@ enum BinanceClient {
         case depth(DepthDiff)
     }
 
-    static func parseStreamEvent(_ text: String) -> StreamEvent? {
+    /// The same, as an async function that is not tied to the main actor: the socket delivers hundreds of messages a second
+    /// for a busy pair, and parsing each one on the main thread was a wake-up and a JSON pass per message.
+    nonisolated static func parseOffMain(_ text: String) async -> StreamEvent? { parseStreamEvent(text) }
+
+    nonisolated static func parseStreamEvent(_ text: String) -> StreamEvent? {
         guard let data = text.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let body = root["data"] as? [String: Any], let kind = body["e"] as? String else { return nil }

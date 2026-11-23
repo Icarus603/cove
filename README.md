@@ -58,14 +58,14 @@ Requires **macOS 14 or later**. Built for Apple Silicon.
    tabs you see, and the pages under **Features** set up each one.
 5. **Make it yours.** **Settings → Advanced** has a custom accent colour; every sidebar, button and focus ring follows it.
 
-### Play your own music and video (Player)
+### Play your own audio and video (Player)
 
 1. Open the **Player** tab and press **＋ Add**. Choose files or whole folders (subfolders are included). Cove reads tags and
    cover art for you.
 2. **Double-click** a title to play it. Use the **⋯** that appears on a row for Play next, Add to queue, Add to playlist,
    Show in Finder and more.
 3. Filter with **All / Audio / Video**, search at the top, and sort with the ⇅ menu.
-4. **Make a playlist.** Choose **Playlists → New playlist…**, name it, then press **＋** on the songs to put in. Or, in the
+4. **Make a playlist.** Choose **Playlists → New playlist…**, name it, then press **＋** on what to put in. Or, in the
    Add dialog, pick **Also put in playlist** so new files go straight into one.
 5. **Select many at once:** click, **Shift**-click for a range, **Command**-click for single rows. A bar appears with
    *Add to playlist*, *Add to queue* and *Select all*.

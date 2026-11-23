@@ -126,7 +126,7 @@ struct PlayerMiniBar: View {
             Image(nsImage: image).resizable().scaledToFill().clipShape(RoundedRectangle(cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed))
         } else {
             RoundedRectangle(cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed).fill(Color.white.opacity(0.18))
-                .overlay { Image(systemName: "music.note").font(.system(size: max(side * 0.5, 6))).foregroundStyle(.white.opacity(0.8)) }
+                .overlay { Image(systemName: "waveform").font(.system(size: max(side * 0.5, 6))).foregroundStyle(.white.opacity(0.8)) }
         }
     }
 }

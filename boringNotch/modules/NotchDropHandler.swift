@@ -62,7 +62,11 @@ enum NotchDropHandler {
 /// the shelf's own targets here, so this view takes that registration over and accepts drops onto the open notch itself.
 final class NotchHostingView<Content: View>: NSHostingView<Content> {
     private let viewModel: BoringViewModel
-    private var reclaimTimer: Timer?
+    /// Re-takes the registration while a mouse button is down (a drag may be starting) and never otherwise: a timer that ran
+    /// all day walked the whole view tree twice a second for nothing.
+    private var claimTimer: Timer?
+    private var mouseMonitor: Any?
+    private var lastClaim = Date.distantPast
 
     init(rootView: Content, viewModel: BoringViewModel) {
         self.viewModel = viewModel
@@ -73,7 +77,10 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
     @MainActor required init(rootView: Content) { fatalError("use init(rootView:viewModel:)") }
     @MainActor required dynamic init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    deinit { reclaimTimer?.invalidate() }
+    deinit {
+        claimTimer?.invalidate()
+        if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
+    }
 
     private static var acceptedTypes: [NSPasteboard.PasteboardType] {
         [.fileURL, .URL, .string, .png, .tiff]
@@ -81,9 +88,12 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
     }
 
     /// Switches off SwiftUI's own destination view so this one is the deepest registered view under a drag.
-    private func claimRegistration() {
+    private func claimRegistration(throttled: Bool = false) {
+        let now = Date()
+        if throttled, now.timeIntervalSince(lastClaim) < 0.25 { return }
+        lastClaim = now
         func visit(_ view: NSView) {
-            if String(describing: type(of: view)).contains("DraggingDestination"), !view.registeredDraggedTypes.isEmpty {
+            if NSStringFromClass(type(of: view)).contains("DraggingDestination"), !view.registeredDraggedTypes.isEmpty {
                 view.unregisterDraggedTypes()
             }
             view.subviews.forEach(visit)
@@ -91,17 +101,29 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
         visit(self)
     }
 
+    private func buttonChanged(down: Bool) {
+        claimTimer?.invalidate()
+        claimTimer = nil
+        guard down else { return }
+        claimRegistration()
+        claimTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.claimRegistration() }
+        claimTimer?.tolerance = 0.1
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        reclaimTimer?.invalidate()
+        claimTimer?.invalidate(); claimTimer = nil
+        if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor); self.mouseMonitor = nil }
         guard window != nil else { return }
         claimRegistration()
-        reclaimTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.claimRegistration() }
+        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] event in
+            Task { @MainActor in self?.buttonChanged(down: event.type == .leftMouseDown) }
+        }
     }
 
     override func layout() {
         super.layout()
-        claimRegistration()
+        claimRegistration(throttled: true)   // layout runs for every animation frame; once a quarter second is enough
     }
 
     private func takes(_ sender: NSDraggingInfo) -> Bool {
@@ -125,7 +147,7 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
     }
 
     private func follow(_ sender: NSDraggingInfo) -> NSDragOperation {
-        claimRegistration()
+        claimRegistration(throttled: true)
         guard takes(sender) else {
             setTargets(shelf: false, airDrop: false)
             return []

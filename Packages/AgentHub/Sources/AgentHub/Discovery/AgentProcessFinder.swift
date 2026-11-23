@@ -126,13 +126,51 @@ enum AgentProcessFinder {
         }
     }
 
+    /// What was learned about a process in the last moment. One scan asks each finder (about thirteen of them) about every
+    /// process on the machine, and each used to ask the system again for the same path and the same command line: some
+    /// twenty thousand system calls, and megabytes of strings, for what is one question. A second and a half is far shorter
+    /// than anything that makes a process a different process, so the answer is simply kept for that long.
+    private enum Recent {
+        private static let lock = NSLock()
+        private static var paths: [pid_t: (value: String?, at: Date)] = [:]
+        private static var args: [pid_t: (value: [String]?, at: Date)] = [:]
+        // The comparisons are all on lower-case text; lower-casing a path or a long command line once per finder per process was
+        // as costly as the system calls. Here it is done once, when the answer is learned.
+        private static let lifetime: TimeInterval = 1.5
+
+        static func path(_ pid: pid_t) -> String? {
+            lock.lock()
+            if let hit = paths[pid], Date().timeIntervalSince(hit.at) < lifetime { lock.unlock(); return hit.value }
+            if paths.count > 4000 { paths.removeAll(keepingCapacity: true) }
+            lock.unlock()
+            let value = ProcessTable.executablePath(for: pid)?.lowercased()
+            lock.lock(); paths[pid] = (value, Date()); lock.unlock()
+            return value
+        }
+
+        static func arguments(_ pid: pid_t) -> [String]? {
+            lock.lock()
+            if let hit = args[pid], Date().timeIntervalSince(hit.at) < lifetime { lock.unlock(); return hit.value }
+            if args.count > 1000 { args.removeAll(keepingCapacity: true) }
+            lock.unlock()
+            let value = ProcessTable.getProcessArgs(pid)?.map { $0.lowercased() }
+            lock.lock(); args[pid] = (value, Date()); lock.unlock()
+            return value
+        }
+    }
+
+    /// Lower-case text, without building a new string when it already is (the cached lookups hand out lower-case text).
+    private static func lowered(_ text: String) -> String {
+        text.utf8.contains(where: { $0 >= 65 && $0 <= 90 }) ? text.lowercased() : text
+    }
+
     private static func findPids(
         matchingPathSubstrings pathSubstrings: [String],
         pathSuffixes: [String] = [],
         argSubstrings: [String] = [],
         candidatePids: [pid_t]? = nil,
-        executablePath: (pid_t) -> String? = { ProcessTable.executablePath(for: $0) },
-        arguments: (pid_t) -> [String]? = { ProcessTable.getProcessArgs($0) }
+        executablePath: (pid_t) -> String? = { Recent.path($0) },
+        arguments: (pid_t) -> [String]? = { Recent.arguments($0) }
     ) -> [pid_t] {
         let loweredPaths = pathSubstrings.map { $0.lowercased() }
         let loweredSuffixes = pathSuffixes.map { $0.lowercased() }
@@ -141,14 +179,14 @@ enum AgentProcessFinder {
 
         var matched: [pid_t] = []
         for pid in candidatePids ?? ProcessTable.allProcessIds() {
-            guard let path = executablePath(pid)?.lowercased() else { continue }
+            guard let path = executablePath(pid).map(Self.lowered) else { continue }
             if loweredPaths.contains(where: { path.contains($0) })
                 || loweredSuffixes.contains(where: { path.hasSuffix($0) }) {
                 matched.append(pid)
                 continue
             }
             guard !loweredArgs.isEmpty,
-                  let args = arguments(pid)?.map({ $0.lowercased() }) else { continue }
+                  let args = arguments(pid).map({ $0.map(Self.lowered) }) else { continue }
             if args.contains(where: { arg in loweredArgs.contains(where: { arg.contains($0) }) }) {
                 matched.append(pid)
             }

@@ -20,7 +20,48 @@ struct ChartOverlays: Equatable {
     var boll = false
 }
 
+/// Every line the chart can draw, worked out over all the candles loaded.
+struct IndicatorSet {
+    var closes: [Double] = []
+    var ma7: [Double?] = [], ma25: [Double?] = [], ema12: [Double?] = [], ema26: [Double?] = []
+    var boll = Indicators.Bollinger(middle: [], upper: [], lower: [])
+    var rsi: [Double?] = []
+    var macd = Indicators.MACD(line: [], signal: [], histogram: [])
+
+    init(candles: [Candle], overlays: ChartOverlays, sub: SubPanel) {
+        closes = candles.map(\.close)
+        if overlays.ma { ma7 = Indicators.sma(closes, period: 7); ma25 = Indicators.sma(closes, period: 25) }
+        if overlays.ema { ema12 = Indicators.ema(closes, period: 12); ema26 = Indicators.ema(closes, period: 26) }
+        if overlays.boll { boll = Indicators.bollinger(closes) }
+        if sub == .rsi { rsi = Indicators.rsi(closes) }
+        if sub == .macd { macd = Indicators.macd(closes) }
+    }
+}
+
+/// Keeps the indicators until the candles or the choice of lines change. The pointer moving over the chart redraws it sixty
+/// times a second; the indicators over four thousand candles must not be computed again each time.
+final class IndicatorCache {
+    private struct Key: Equatable {
+        var count: Int
+        var firstTime: Date?
+        var last: Candle?
+        var overlays: ChartOverlays
+        var sub: SubPanel
+    }
+    private var key: Key?
+    private var set: IndicatorSet?
+
+    func indicators(candles: [Candle], overlays: ChartOverlays, sub: SubPanel) -> IndicatorSet {
+        let wanted = Key(count: candles.count, firstTime: candles.first?.openTime, last: candles.last, overlays: overlays, sub: sub)
+        if let set, key == wanted { return set }
+        let fresh = IndicatorSet(candles: candles, overlays: overlays, sub: sub)
+        key = wanted; set = fresh
+        return fresh
+    }
+}
+
 struct CandleChart: View {
+    @State private var cache = IndicatorCache()
     let candles: [Candle]
     let overlays: ChartOverlays
     let sub: SubPanel
@@ -37,7 +78,8 @@ struct CandleChart: View {
 
     var body: some View {
         let model = ChartModel(candles: candles, overlays: overlays, sub: sub, up: upColor, down: downColor, hover: hoverIndex,
-                               hoverPoint: hoverPoint, interval: interval, visible: visibleCount, endIndex: endIndex)
+                               hoverPoint: hoverPoint, interval: interval, visible: visibleCount, endIndex: endIndex,
+                               indicators: cache.indicators(candles: candles, overlays: overlays, sub: sub))
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
                 Canvas { context, size in model.draw(&context, size: size) }
@@ -149,18 +191,13 @@ struct ChartModel {
     private let macd: Indicators.MACD
 
     init(candles: [Candle], overlays: ChartOverlays, sub: SubPanel, up: Color, down: Color, hover: Int?, hoverPoint: CGPoint?,
-         interval: CandleInterval, visible: Int, endIndex: Int) {
+         interval: CandleInterval, visible: Int, endIndex: Int, indicators: IndicatorSet) {
         self.candles = candles; self.overlays = overlays; self.sub = sub; self.up = up; self.down = down; self.hover = hover
         self.hoverPoint = hoverPoint; self.interval = interval
         self.visible = max(visible, 1); self.endIndex = min(max(endIndex, 0), max(candles.count - 1, 0))
-        closes = candles.map(\.close)
-        ma7 = overlays.ma ? Indicators.sma(closes, period: 7) : []
-        ma25 = overlays.ma ? Indicators.sma(closes, period: 25) : []
-        ema12 = overlays.ema ? Indicators.ema(closes, period: 12) : []
-        ema26 = overlays.ema ? Indicators.ema(closes, period: 26) : []
-        boll = overlays.boll ? Indicators.bollinger(closes) : Indicators.Bollinger(middle: [], upper: [], lower: [])
-        rsi = sub == .rsi ? Indicators.rsi(closes) : []
-        macd = sub == .macd ? Indicators.macd(closes) : Indicators.MACD(line: [], signal: [], histogram: [])
+        closes = indicators.closes
+        ma7 = indicators.ma7; ma25 = indicators.ma25; ema12 = indicators.ema12; ema26 = indicators.ema26
+        boll = indicators.boll; rsi = indicators.rsi; macd = indicators.macd
     }
 
     /// Candles actually drawn, and the index of the first of them. Fewer than `visible` near the start of history.

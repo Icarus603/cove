@@ -100,7 +100,7 @@ private struct NowPlayingPane: View {
             } else {
                 ZStack {
                     LinearGradient(colors: [Color.effectiveAccent.opacity(0.5), Color.effectiveAccent.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    Image(systemName: item.kind == .video ? "film" : "music.note").font(.system(size: 34)).foregroundStyle(.white.opacity(0.8))
+                    Image(systemName: item.kind == .video ? "film" : "waveform").font(.system(size: 34)).foregroundStyle(.white.opacity(0.8))
                 }
             }
         }
@@ -208,7 +208,7 @@ private struct LibraryPane: View {
             playlistMenu
             Spacer(minLength: 0)
             if case .playlist(let id) = ui.filter {
-                PlayerIconButton(symbol: "plus.circle", size: 11, help: "Add songs") { ui.pickingFor = id }
+                PlayerIconButton(symbol: "plus.circle", size: 11, help: "Add video or audio") { ui.pickingFor = id }
                 PlayerIconButton(symbol: "pencil", size: 10, help: "Rename playlist") { namingText = library.playlists.first { $0.id == id }?.name ?? ""; ui.naming = .rename(id) }
                 PlayerIconButton(symbol: "trash", size: 10, help: "Delete playlist") { library.deletePlaylist(id); ui.filter = .all }
             }
@@ -246,7 +246,7 @@ private struct LibraryPane: View {
             }
         } label: {
             HStack(spacing: 3) {
-                Image(systemName: "music.note.list").font(.system(size: 9))
+                Image(systemName: "play.square.stack").font(.system(size: 9))
                 Text(selectedName ?? String(localized: "Playlists")).lineLimit(1)
             }
             .font(.system(size: 10, weight: .semibold))
@@ -276,7 +276,7 @@ private struct LibraryPane: View {
         let name = library.playlists.first { $0.id == id }?.name ?? ""
         let count = library.playlists.first { $0.id == id }?.itemIDs.count ?? 0
         return HStack(spacing: 8) {
-            Image(systemName: "music.note.list").foregroundStyle(.secondary)
+            Image(systemName: "play.square.stack").foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 0) {
                 Text("Adding to “\(name)”").font(.system(size: 11, weight: .semibold)).lineLimit(1)
                 Text("\(count) in this playlist").font(.system(size: 9)).foregroundStyle(.secondary)
@@ -339,7 +339,7 @@ private struct LibraryPane: View {
                     }
                 }
             } label: {
-                Label("Add to playlist", systemImage: "music.note.list")
+                Label("Add to playlist", systemImage: "play.square.stack")
                     .font(.system(size: 10, weight: .semibold)).padding(.horizontal, 10).frame(height: 22)
                     .background(Capsule().fill(Color.white.opacity(0.92))).foregroundStyle(Color.black)
             }
@@ -368,7 +368,7 @@ private struct LibraryPane: View {
 
     private var namingRow: some View {
         HStack(spacing: 6) {
-            NotchTextField(text: $namingText, placeholder: "Playlist name", symbol: "music.note.list", onCommit: { ui.commitNaming(namingText) })
+            NotchTextField(text: $namingText, placeholder: "Playlist name", symbol: "play.square.stack", onCommit: { ui.commitNaming(namingText) })
             Button("Save") { ui.commitNaming(namingText) }.controlSize(.small).disabled(namingText.trimmingCharacters(in: .whitespaces).isEmpty)
             Button("Cancel") { ui.naming = nil }.controlSize(.small)
         }
@@ -485,11 +485,11 @@ private struct EmptyPlaylist: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: "music.note.list").font(.system(size: 26)).foregroundStyle(.secondary)
+            Image(systemName: "play.square.stack").font(.system(size: 26)).foregroundStyle(.secondary)
             Text("This playlist is empty").font(.system(size: 12, weight: .semibold))
-            Text("Choose songs from your library to put in it.").font(.system(size: 10)).foregroundStyle(.secondary)
+            Text("Choose video or audio from your library to put in it.").font(.system(size: 10)).foregroundStyle(.secondary)
             Button { ui.pickingFor = playlistID } label: {
-                Label("Add songs", systemImage: "plus")
+                Label("Add video or audio", systemImage: "plus")
                     .font(.system(size: 11, weight: .semibold)).padding(.horizontal, 14).frame(height: 26)
                     .background(Capsule().fill(Color.white.opacity(0.92))).foregroundStyle(Color.black)
             }
@@ -569,21 +569,30 @@ private struct LibraryRow: View {
 private struct Thumbnail: View {
     let item: MediaItem
     let size: CGFloat
-    @ObservedObject private var library = PlayerLibrary.shared
+    private let library = PlayerLibrary.shared
+    /// Starts with what is in memory; the rest is read in the background, so scrolling never waits for the disk.
+    @State private var loaded: NSImage?
+
+    init(item: MediaItem, size: CGFloat) {
+        self.item = item
+        self.size = size
+        _loaded = State(initialValue: PlayerLibrary.shared.cachedArtwork(for: item))
+    }
 
     var body: some View {
         Group {
-            if let image = library.artwork(for: item) {
+            if let image = loaded {
                 Image(nsImage: image).resizable().scaledToFill()
             } else {
                 ZStack {
                     Color.white.opacity(0.1)
-                    Image(systemName: item.kind == .video ? "film" : "music.note").font(.system(size: size * 0.42)).foregroundStyle(.secondary)
+                    Image(systemName: item.kind == .video ? "film" : "waveform").font(.system(size: size * 0.42)).foregroundStyle(.secondary)
                 }
             }
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .task(id: item.id) { if loaded == nil { loaded = await library.loadArtwork(for: item) } }
     }
 }
 
@@ -611,7 +620,7 @@ private struct RowMenu: View {
             ForEach(library.playlists) { playlist in
                 Button(playlist.name) { library.add(targets, toPlaylist: playlist.id); if many { ui.clearSelection() } }
             }
-        } label: { Label(many ? "Add \(targets.count) to playlist" : "Add to playlist", systemImage: "music.note.list") }
+        } label: { Label(many ? "Add \(targets.count) to playlist" : "Add to playlist", systemImage: "play.square.stack") }
         if case .playlist(let id) = ui.filter {
             if !many {
                 Button { ui.moveInPlaylist(item.id, by: -1) } label: { Label("Move up", systemImage: "arrow.up") }

@@ -187,7 +187,6 @@ final class PhotoBrowserModel: ObservableObject {
         // A photo opens as a picture and nothing else; the controls come when the pointer moves and go again when it rests.
         chromeVisible = false
         lastActivity = .distantPast
-        startChromeTimer()
     }
 
     /// Opens the editor on a photo (opening it in the viewer first).
@@ -210,10 +209,17 @@ final class PhotoBrowserModel: ObservableObject {
         chromeVisible = true
     }
 
-    private func startChromeTimer() {
-        chromeTimer?.invalidate()
-        chromeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.hideChromeIfIdle() }
+    /// Asks, once the controls have rested long enough, whether to hide them. One pending check at most, never a clock that
+    /// runs for as long as the viewer is open.
+    private func scheduleChromeHide() {
+        guard chromeTimer == nil, viewing != nil else { return }
+        chromeTimer = Timer.scheduledTimer(withTimeInterval: 1.85, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.chromeTimer = nil
+                self.hideChromeIfIdle()
+                if self.chromeVisible, self.viewing != nil { self.scheduleChromeHide() }
+            }
         }
     }
 
@@ -233,7 +239,6 @@ final class PhotoBrowserModel: ObservableObject {
         slideshowActive = true
         restartSlideshowTimer()
         poke()
-        startChromeTimer()
     }
 
     func stopSlideshow() {
@@ -257,6 +262,7 @@ final class PhotoBrowserModel: ObservableObject {
     func poke() {
         lastActivity = Date()
         if !chromeVisible { chromeVisible = true }
+        scheduleChromeHide()
     }
 
     private func hideChromeIfIdle() {

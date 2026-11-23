@@ -23,17 +23,38 @@ final class PhotoImageCache {
 /// An animated GIF, which a plain SwiftUI image would show as one frame.
 struct AnimatedImageView: NSViewRepresentable {
     let url: URL
+
+    /// Remembers which file the view shows, so a SwiftUI update that is not a new photo (the controls fading, a zoom, every
+    /// scroll event) does not read and decode the whole file again, which also restarted the animation.
+    final class Coordinator { var url: URL? }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeNSView(context: Context) -> NSImageView {
         let view = NSImageView()
         view.imageScaling = .scaleProportionallyUpOrDown
         view.imageAlignment = .alignCenter
         view.animates = true
-        view.image = NSImage(contentsOf: url)
+        load(into: view, coordinator: context.coordinator)
         return view
     }
+
     func updateNSView(_ view: NSImageView, context: Context) {
-        view.image = NSImage(contentsOf: url)
-        view.animates = true
+        load(into: view, coordinator: context.coordinator)
+    }
+
+    private func load(into view: NSImageView, coordinator: Coordinator) {
+        guard coordinator.url != url else { return }
+        coordinator.url = url
+        let target = url
+        // Reading and decoding a large GIF takes a while: not on the main thread.
+        Task.detached(priority: .userInitiated) {
+            let image = NSImage(contentsOf: target)
+            await MainActor.run {
+                guard coordinator.url == target else { return }
+                view.image = image
+                view.animates = true
+            }
+        }
     }
 }
 

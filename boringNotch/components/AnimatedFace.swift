@@ -8,6 +8,7 @@ import SwiftUI
 
 struct MinimalFaceFeatures: View {
     @State private var isBlinking = false
+    @State private var blinker = Blinker()
     @State var height:CGFloat = 20;
     @State var width:CGFloat = 30;
     
@@ -40,13 +41,23 @@ struct MinimalFaceFeatures: View {
             }
         }
         .frame(width: self.width, height: self.height) // Maximum size of face
-        .onAppear {
-            startBlinking()
-        }
+        .onAppear { startBlinking() }
+        .onDisappear { blinker.stop() }   // the timer used to outlive the face, and one more was added at every appearance
     }
-    
+
+    /// Owns the blink timer so it can be ended with the view.
+    final class Blinker {
+        private var timer: Timer?
+        func start(_ blink: @escaping () -> Void) {
+            stop()
+            timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in blink() }
+            timer?.tolerance = 1
+        }
+        func stop() { timer?.invalidate(); timer = nil }
+    }
+
     func startBlinking() {
-        Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
+        blinker.start {
             withAnimation(.spring(duration: 0.2)) {
                 isBlinking = true
             }

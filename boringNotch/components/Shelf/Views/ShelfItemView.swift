@@ -181,7 +181,10 @@ private struct DraggableClickHandler<Content: View>: NSViewRepresentable {
         let view = DraggableClickView()
         view.item = item
         view.viewModel = viewModel
-        view.dragPreviewImage = cachedPreviewImage ?? renderDragPreview()
+        // Rendered when a drag actually starts (almost nobody drags): rendering one for every item as the shelf opened cost two
+        // synchronous renders per item on the main thread.
+        view.dragPreviewImage = cachedPreviewImage
+        view.renderPreview = { self.renderDragPreview() }
         view.onRightClick = onRightClick
         view.onClick = onClick
         return view
@@ -190,6 +193,7 @@ private struct DraggableClickHandler<Content: View>: NSViewRepresentable {
     func updateNSView(_ nsView: DraggableClickView, context: Context) {
         nsView.item = item
         nsView.viewModel = viewModel
+        nsView.renderPreview = { self.renderDragPreview() }
         // Only update preview if cached version is available
         if let cached = cachedPreviewImage {
             nsView.dragPreviewImage = cached
@@ -215,6 +219,8 @@ private struct DraggableClickHandler<Content: View>: NSViewRepresentable {
         var item: ShelfItem!
         weak var viewModel: ShelfItemViewModel?
         var dragPreviewImage: NSImage?
+        /// Makes the preview on demand, for the moment a drag begins.
+        var renderPreview: (() -> NSImage)?
         var onRightClick: ((NSEvent, NSView) -> Void)?
         var onClick: ((NSEvent, NSView) -> Void)?
 
@@ -273,6 +279,7 @@ private struct DraggableClickHandler<Content: View>: NSViewRepresentable {
                     let draggingItem = NSDraggingItem(pasteboardWriter: pasteboardItem)
 
                     // Use the drag preview image
+                    if dragPreviewImage == nil { dragPreviewImage = renderPreview?() }
                     let image = dragPreviewImage ?? dragItem.icon
                     let imageFrame = NSRect(
                         x: 0,

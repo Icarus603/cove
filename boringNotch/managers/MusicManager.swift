@@ -71,6 +71,7 @@ class MusicManager: ObservableObject {
 
     // MARK: - Initialization
     init() {
+        NowPlayingController.endOrphanedAdapters()   // adapters an earlier run left behind
         // Listen for changes to the default controller preference
         NotificationCenter.default.publisher(for: Notification.Name.mediaControllerChanged)
             .sink { [weak self] _ in
@@ -113,6 +114,7 @@ class MusicManager: ObservableObject {
         // Cleanup previous controller
         if activeController != nil {
             controllerCancellables.removeAll()
+            (activeController as? NowPlayingController)?.stop()   // or its adapter process would never end
             activeController = nil
         }
 
@@ -254,7 +256,13 @@ class MusicManager: ObservableObject {
             self.fetchLyricsIfAvailable(bundleIdentifier: state.bundleIdentifier, title: state.title, artist: state.artist)
         }
 
-        let timeChanged = state.currentTime != self.elapsedTime
+        // Where the track should be by now if nothing but time has passed. A report that agrees (within a fraction of a second)
+        // says nothing new, and publishing it redrew the whole notch view for no change anyone could see: the progress bar
+        // works out its own position from the last real one.
+        let expected = self.isPlaying && state.isPlaying
+            ? self.elapsedTime + state.lastUpdated.timeIntervalSince(self.timestampDate) * self.playbackRate
+            : self.elapsedTime
+        let timeChanged = abs(state.currentTime - expected) > 0.4 || state.isPlaying != self.isPlaying
         let durationChanged = state.duration != self.songDuration
         let playbackRateChanged = state.playbackRate != self.playbackRate
         let shuffleChanged = state.isShuffled != self.isShuffled
@@ -306,7 +314,7 @@ class MusicManager: ObservableObject {
             self.volume = state.volume
         }
         
-        self.timestampDate = state.lastUpdated
+        if timeChanged || playbackRateChanged { self.timestampDate = state.lastUpdated }
     }
 
     func toggleFavoriteTrack() {

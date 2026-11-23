@@ -116,12 +116,33 @@ final class SessionDiscoveryCoordinator {
 
     /// Scan every enabled source; a request made while a scan runs is
     /// coalesced into one rescan after it.
+    /// A scan walks every process on the machine for every agent; while an agent writes its transcript the file watcher asks for
+    /// one every couple of seconds, back to back. Scans start at least this far apart. The last request is never dropped: it
+    /// is held and runs when the gap is over, so the final state of a session is still seen, only a moment later.
+    var minimumScanInterval: TimeInterval = 3
+    private var lastScanStart: Date?
+    private var deferredScan: Task<Void, Never>?
+
     func requestScan() {
         guard !isStopped else { return }
         if scanTask != nil {
             pendingRescan = true
             return
         }
+        if deferredScan != nil { return }   // one is already waiting, and it will see whatever this request is about
+        if let last = lastScanStart {
+            let wait = minimumScanInterval - Date().timeIntervalSince(last)
+            if wait > 0 {
+                deferredScan = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                    guard !Task.isCancelled, let self else { return }
+                    self.deferredScan = nil
+                    self.requestScan()
+                }
+                return
+            }
+        }
+        lastScanStart = Date()
 
         pendingRescan = false
         let scan = scanners.sessions
@@ -260,6 +281,8 @@ final class SessionDiscoveryCoordinator {
         tearDownProjectsWatcher()
         scanTask?.cancel()
         scanTask = nil
+        deferredScan?.cancel()
+        deferredScan = nil
         pendingRescan = false
         codexDesktopScanTask?.cancel()
         codexDesktopScanTask = nil

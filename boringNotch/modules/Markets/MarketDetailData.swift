@@ -73,10 +73,20 @@ struct LocalOrderBook {
         asks.forEach { self.asks[$0.price] = $0.quantity }
     }
 
+    private var applied = 0
+
     mutating func apply(_ diff: DepthDiff) {
         for level in diff.bids { bids[level.price] = level.quantity > 0 ? level.quantity : nil }
         for level in diff.asks { asks[level.price] = level.quantity > 0 ? level.quantity : nil }
         lastUpdateId = diff.last
+        // Levels far from the price are never asked for and Binance only removes them when they empty, so the book would grow
+        // for as long as the window stays open. Now and then drop what is more than 3% away from the middle.
+        applied += 1
+        if applied % 200 == 0, let bestBid = bids.keys.max(), let bestAsk = asks.keys.min() {
+            let mid = (bestBid + bestAsk) / 2, band = mid * 0.03
+            bids = bids.filter { $0.key >= mid - band }
+            asks = asks.filter { $0.key <= mid + band }
+        }
     }
 
     /// Sorted best-first, within 1% of the middle so levels left far behind do not pile up.

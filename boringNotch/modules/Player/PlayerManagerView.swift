@@ -82,11 +82,11 @@ struct PlayerManagerView: View {
         .confirmationDialog(removeSelectionTitle, isPresented: $confirmRemoveSelection, titleVisibility: .visible) {
             Button(model.isPlaylist ? "Remove from Playlist" : "Remove from Library", role: .destructive) { model.removeSelected() }
             Button("Cancel", role: .cancel) {}
-        } message: { Text(model.isPlaylist ? "The tracks stay in your library." : "Your files are not deleted.") }
+        } message: { Text(model.isPlaylist ? "The video and audio stay in your library." : "Your files are not deleted.") }
         .confirmationDialog(String(localized: "Remove all \(model.rows.count) shown?"), isPresented: $confirmRemoveShown, titleVisibility: .visible) {
             Button(model.isPlaylist ? "Remove from Playlist" : "Remove from Library", role: .destructive) { model.removeAllShown() }
             Button("Cancel", role: .cancel) {}
-        } message: { Text(model.isPlaylist ? "The tracks stay in your library." : "Your files are not deleted.") }
+        } message: { Text(model.isPlaylist ? "The video and audio stay in your library." : "Your files are not deleted.") }
         .confirmationDialog(String(localized: "Remove \(model.selection.count) from the library?"), isPresented: $confirmRemoveFromLibrary, titleVisibility: .visible) {
             Button("Remove from Library", role: .destructive) { model.removeSelectedFromLibrary() }
             Button("Cancel", role: .cancel) {}
@@ -100,7 +100,7 @@ struct PlayerManagerView: View {
                 confirmDeletePlaylist = nil
             }
             Button("Cancel", role: .cancel) { confirmDeletePlaylist = nil }
-        } message: { Text("The tracks stay in your library.") }
+        } message: { Text("The video and audio stay in your library.") }
     }
 
     private func applyPending() {
@@ -126,7 +126,7 @@ struct PlayerManagerView: View {
                 ForEach(library.playlists) { playlist in playlistRow(playlist) }
                 if creating {
                     HStack {
-                        Image(systemName: "music.note.list").foregroundStyle(Color.effectiveAccent).frame(width: 18)
+                        Image(systemName: "play.square.stack").foregroundStyle(Color.effectiveAccent).frame(width: 18)
                         TextField("Playlist name", text: $newName).textFieldStyle(.roundedBorder)
                             .onSubmit { commitNew() }
                             .onExitCommand { creating = false }
@@ -156,14 +156,14 @@ struct PlayerManagerView: View {
         Group {
             if renaming == playlist.id {
                 HStack {
-                    Image(systemName: "music.note.list").foregroundStyle(Color.effectiveAccent).frame(width: 18)
+                    Image(systemName: "play.square.stack").foregroundStyle(Color.effectiveAccent).frame(width: 18)
                     TextField("Playlist name", text: $renameText).textFieldStyle(.roundedBorder)
                         .onSubmit { library.renamePlaylist(playlist.id, to: renameText); renaming = nil }
                         .onExitCommand { renaming = nil }
                 }
             } else {
                 AccentSidebarRow(selected: selected, action: { model.scope = scope }) {
-                    SidebarRowLabel(title: playlist.name, symbol: "music.note.list", count: playlist.itemIDs.count, selected: selected)
+                    SidebarRowLabel(title: playlist.name, symbol: "play.square.stack", count: playlist.itemIDs.count, selected: selected)
                 }
             }
         }
@@ -277,7 +277,7 @@ struct PlayerManagerView: View {
 
     private func titleCell(_ item: MediaItem) -> some View {
         HStack(spacing: 7) {
-            Image(systemName: item.kind == .video ? "film" : "music.note").foregroundStyle(.secondary).frame(width: 16)
+            Image(systemName: item.kind == .video ? "film" : "waveform").foregroundStyle(.secondary).frame(width: 16)
             Text(item.title).lineLimit(1)
             if library.missing.contains(item.id) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.coveWarning).font(.system(size: 11)).help(Text("File missing"))
@@ -316,7 +316,7 @@ struct PlayerManagerView: View {
             Image(systemName: model.search.isEmpty ? "tray" : "magnifyingglass").font(.system(size: 34)).foregroundStyle(.secondary)
             Text(emptyScopeText).foregroundStyle(.secondary).multilineTextAlignment(.center)
             if model.isPlaylist && model.search.isEmpty {
-                Button { model.scope = .all } label: { Label("Choose tracks from All Items", systemImage: "square.stack") }
+                Button { model.scope = .all } label: { Label("Choose from All Items", systemImage: "square.stack") }
                     .buttonStyle(.borderedProminent)
             }
         }
@@ -326,7 +326,7 @@ struct PlayerManagerView: View {
     private var emptyScopeText: LocalizedStringKey {
         if !model.search.isEmpty { return "Nothing matches your search." }
         switch model.scope {
-        case .playlist: return "This playlist is empty.\nSelect tracks in All Items, then choose Add to Playlist."
+        case .playlist: return "This playlist is empty.\nSelect video or audio in All Items, then choose Add to Playlist."
         case .missing: return "No files are missing."
         default: return "Nothing here."
         }

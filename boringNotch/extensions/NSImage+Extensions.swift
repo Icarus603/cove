@@ -25,8 +25,12 @@ extension NSImage {
                 return
             }
             
-            let width = cgImage.width
-            let height = cgImage.height
+            // The average of a picture is the average of a small copy of it: drawing a 3000-pixel cover into a bitmap of its own
+            // size and adding up nine million pixels was the cost of every track change.
+            let longSide = max(cgImage.width, cgImage.height)
+            let scale = min(1, 64.0 / Double(max(longSide, 1)))
+            let width = max(Int((Double(cgImage.width) * scale).rounded()), 1)
+            let height = max(Int((Double(cgImage.height) * scale).rounded()), 1)
             let totalPixels = width * height
             
             guard let context = CGContext(data: nil,
@@ -42,6 +46,7 @@ extension NSImage {
                 return
             }
             
+            context.interpolationQuality = .medium
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
             
             guard let data = context.data else {

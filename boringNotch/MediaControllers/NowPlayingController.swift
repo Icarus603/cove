@@ -67,7 +67,42 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
 
     private var process: Process?
     private var pipeHandler: JSONLinesPipeHandler?
+    private static let timestampFormatter = ISO8601DateFormatter()
     private var streamTask: Task<Void, Never>?
+    private var terminationObserver: NSObjectProtocol?
+
+    /// Ends the adapter and the stream. The controller that replaces this one calls it: the stream task holds the controller
+    /// for as long as it reads, so waiting for deinit would keep the adapter alive for ever.
+    func stop() {
+        streamTask?.cancel()
+        streamTask = nil
+        if let observer = terminationObserver { NotificationCenter.default.removeObserver(observer); terminationObserver = nil }
+        if let pipeHandler { Task { await pipeHandler.close() } }
+        if let process, process.isRunning { process.terminate() }
+        process = nil
+        pipeHandler = nil
+    }
+
+    /// An adapter left behind by an earlier run (a quit, an update, a crash) has no parent any more and streams for ever. Ends
+    /// every such adapter that belongs to a Cove, once at launch.
+    static func endOrphanedAdapters() {
+        Task.detached(priority: .utility) {
+            let ps = Process()
+            ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+            ps.arguments = ["-axo", "pid=,ppid=,command="]
+            let pipe = Pipe()
+            ps.standardOutput = pipe
+            guard (try? ps.run()) != nil else { return }
+            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            ps.waitUntilExit()
+            for line in output.split(separator: "\n") {
+                let parts = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
+                guard parts.count == 3, let pid = Int32(parts[0]), parts[1] == "1",
+                      parts[2].contains("mediaremote-adapter.pl"), parts[2].contains("/Cove.app/") else { continue }
+                kill(pid, SIGTERM)
+            }
+        }
+    }
 
     // MARK: - Initialization
     init?() {
@@ -107,12 +142,10 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
             }
         }
         
-        if let process = self.process {
-            if process.isRunning {
-                process.terminate()
-                process.waitUntilExit()
-            }
+        if let process = self.process, process.isRunning {
+            process.terminate()   // no waitUntilExit: deinit must not block
         }
+        if let observer = terminationObserver { NotificationCenter.default.removeObserver(observer) }
 
         self.process = nil
         self.pipeHandler = nil
@@ -198,7 +231,8 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         }
         
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = [scriptURL.path, frameworkPath, "stream"]
+        // MediaRemote sends a burst of frames when the playback position moves; the adapter can merge them for us.
+        process.arguments = [scriptURL.path, frameworkPath, "stream", "--debounce=250"]
         
         let pipeHandler = JSONLinesPipeHandler()
         process.standardOutput = await pipeHandler.getPipe()
@@ -208,6 +242,10 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
 
         do {
             try process.run()
+            // Quitting the app does not run deinit, and the adapter would outlive it for good: end it with the app.
+            terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { [weak process] _ in
+                process?.terminate()
+            }
             streamTask = Task { [weak self] in
                 await self?.processJSONStream()
             }
@@ -275,7 +313,7 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         }
 
         if let dateString = payload.timestamp,
-           let date = ISO8601DateFormatter().date(from: dateString) {
+           let date = Self.timestampFormatter.date(from: dateString) {
             newPlaybackState.lastUpdated = date
         } else if !diff {
             newPlaybackState.lastUpdated = Date()
@@ -348,6 +386,7 @@ struct NowPlayingPayload: Codable {
 }
 
 actor JSONLinesPipeHandler {
+    private static let decoder = JSONDecoder()
     private let pipe: Pipe
     private let fileHandle: FileHandle
     private var buffer = ""
@@ -396,7 +435,7 @@ actor JSONLinesPipeHandler {
             return
         }
         do {
-            let decodedObject = try JSONDecoder().decode(T.self, from: data)
+            let decodedObject = try Self.decoder.decode(T.self, from: data)
             await onLine(decodedObject)
         } catch {
             // Ignore lines that can't be decoded

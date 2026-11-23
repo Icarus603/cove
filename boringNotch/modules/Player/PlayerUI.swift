@@ -52,21 +52,24 @@ final class PlayerUI: ObservableObject {
     @Published var controlsVisible = true
     private(set) var lastActivity = Date()
     @Published var showQueue = false
-    @Published var filter: LibraryFilter = .all
-    @Published var search = ""
+    @Published var filter: LibraryFilter = .all { didSet { if filter != oldValue { recomputeVisibleItems() } } }
+    @Published var search = "" { didSet { if search != oldValue { recomputeVisibleItems() } } }
     @Published var selection: Set<UUID> = []
     @Published var naming: Naming?
     /// The playlist songs are being chosen for: the library list shows a + on every row until Done.
     @Published var pickingFor: UUID?
     @Published var sort: LibrarySort {
-        didSet { UserDefaults.standard.set(sort.rawValue, forKey: PlayerSettingsKey.sort) }
+        didSet { UserDefaults.standard.set(sort.rawValue, forKey: PlayerSettingsKey.sort); recomputeVisibleItems() }
     }
 
     let engine: PlayerEngine
     let library: PlayerLibrary
     let now: PlayerNowPlaying
     private var observer: AnyCancellable?
-    private var idleTimer: Timer?
+    /// One pending check for "has the pointer rested long enough"; none while nothing is playing or the controls are hidden.
+    private var hideTimer: Timer?
+    private var playbackObserver: AnyCancellable?
+    private var libraryObserver: AnyCancellable?
 
     init(engine: PlayerEngine = .shared, library: PlayerLibrary = .shared) {
         self.engine = engine
@@ -75,10 +78,18 @@ final class PlayerUI: ObservableObject {
         sort = LibrarySort(rawValue: UserDefaults.standard.string(forKey: PlayerSettingsKey.sort) ?? "") ?? .recentlyAdded
         UserDefaults.standard.register(defaults: [PlayerSettingsKey.resume: true, PlayerSettingsKey.miniBar: true,
                                                   PlayerSettingsKey.videoPlacement: "notch", PlayerSettingsKey.floatOnTop: true])
-        // One clock for the whole app. It must not live in a view: the views are rebuilt with every tick of the player's own
-        // clock, and a timer made inside one is replaced before it ever fires.
-        idleTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.hideControlsIfIdle() }
+        // The list follows the library (items added, removed, edited, a playlist changed). A publisher fires before the value
+        // changes, so the work is done a turn later, when it has.
+        libraryObserver = Publishers.Merge(library.$items.map { _ in () }, library.$playlists.map { _ in () })
+            .dropFirst(2)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.recomputeVisibleItems() }
+        recomputeVisibleItems()
+        // Playing again with the controls up: they get their rest period too. (A publisher fires before the value changes,
+        // so the new state is taken from the event.)
+        playbackObserver = engine.$state.removeDuplicates().sink { [weak self] state in
+            guard let self, state == .playing, self.controlsVisible else { return }
+            self.scheduleHide(playing: true)
         }
         // Where a track shows follows what it is: a video goes to the notch or the window (the user's choice), a song
         // brings the window back in. Only when the track really changes, not on every state change.
@@ -107,6 +118,23 @@ final class PlayerUI: ObservableObject {
     func pokeControls() {
         lastActivity = Date()
         if !controlsVisible { controlsVisible = true }
+        scheduleHide()
+    }
+
+    /// Asks, once the rest period is up, whether to hide. Never a repeating clock: nothing runs while the controls stay put.
+    private func scheduleHide(playing: Bool? = nil) {
+        guard hideTimer == nil, playing ?? (engine.state == .playing) else { return }
+        // The time left of the rest period (counted from the last activity), not a whole new one.
+        let remaining = max(lastActivity.addingTimeInterval(controlsIdleLimit).timeIntervalSinceNow, 0) + 0.05
+        hideTimer = Timer.scheduledTimer(withTimeInterval: remaining, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.hideTimer = nil
+                self.hideControlsIfIdle()
+                // Something moved meanwhile: look again when its rest period will be over.
+                if self.controlsVisible, self.engine.state == .playing { self.scheduleHide() }
+            }
+        }
     }
 
     /// How long the pointer may rest before the controls go: shorter when the video fills the screen.
@@ -153,7 +181,14 @@ final class PlayerUI: ObservableObject {
 
     // MARK: The list shown
 
-    var visibleItems: [MediaItem] { library.items(matching: filter, search: search, sort: sort) }
+    /// The list on screen, worked out when something that decides it changes and not again for every redraw: filtering and
+    /// sorting the whole library (with two collations per comparison) on each body evaluation was the cost of every keystroke
+    /// and every progress tick of an import.
+    @Published private(set) var visibleItems: [MediaItem] = []
+
+    func recomputeVisibleItems() {
+        visibleItems = library.items(matching: filter, search: search, sort: sort)
+    }
 
     /// Falls back to All when the selected playlist no longer exists.
     func validateFilter() {

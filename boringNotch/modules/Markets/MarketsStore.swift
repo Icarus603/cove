@@ -143,7 +143,8 @@ final class MarketsStore: ObservableObject {
         do {
             let result = try await BinanceClient.portfolio()
             portfolio = result; portfolioError = nil; portfolioUpdated = Date()
-            startPortfolioTask()
+            // Only a tab that is showing keeps polling; testing the key from Settings must not start a clock that never stops.
+            if isActive { startPortfolioTask() }
             return nil
         } catch {
             portfolioError = error.localizedDescription
@@ -162,7 +163,7 @@ final class MarketsStore: ObservableObject {
             do {
                 while !Task.isCancelled {
                     let message = try await task.receive()
-                    guard case .string(let text) = message, let event = BinanceClient.parseStreamEvent(text) else { continue }
+                    guard case .string(let text) = message, let event = await BinanceClient.parseOffMain(text) else { continue }
                     switch event {
                     case .mini(var ticker):
                         // The snapshot can be up to a second behind the trades already seen.

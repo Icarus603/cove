@@ -141,7 +141,7 @@ final class MarketDetailStore: ObservableObject {
             task.resume()
             do {
                 while !Task.isCancelled {
-                    guard case .string(let text) = try await task.receive(), let event = BinanceClient.parseStreamEvent(text) else { continue }
+                    guard case .string(let text) = try await task.receive(), let event = await BinanceClient.parseOffMain(text) else { continue }
                     switch event {
                     case .kline(let candle, let eventTime): apply(candle, eventTime: eventTime, interval: interval)
                     case .trade(_, let price, let quantity, let time): applyTrade(price: price, quantity: quantity, time: time, interval: interval)
@@ -161,21 +161,20 @@ final class MarketDetailStore: ObservableObject {
     // MARK: Order book
 
     private func handleDepth(_ diff: DepthDiff, symbol: String) {
-        guard var book = localBook else {
+        guard let lastUpdateId = localBook?.lastUpdateId else {
             bookBuffer.append(diff)
             if bookBuffer.count > 500 { bookBuffer.removeFirst(bookBuffer.count - 500) }
             if !isSyncingBook { syncBook(symbol) }
             return
         }
-        if diff.last <= book.lastUpdateId { return }
-        if diff.first > book.lastUpdateId + 1 {
+        if diff.last <= lastUpdateId { return }
+        if diff.first > lastUpdateId + 1 {
             // A diff was missed: the local book is stale. Start again from a fresh snapshot.
             localBook = nil; bookBuffer = [diff]
             syncBook(symbol)
             return
         }
-        book.apply(diff)
-        localBook = book
+        localBook?.apply(diff)   // in place: copying the two dictionaries for every diff made a megabyte of garbage a time
         schedulePublishBook()
     }
 

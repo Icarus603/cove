@@ -59,7 +59,38 @@ struct ShelfItem: Identifiable, Codable, Equatable, Sendable {
         self.isTemporary = isTemporary
     }
     
-    var displayName: String {
+    /// The name and icon are asked for by every redraw of every item (a SwiftUI body). Resolving the bookmark, reading the file
+    /// for its title and asking Launch Services for the icon are disk work, so they are kept for a few seconds: a file that is
+    /// renamed or moved still shows its new name soon, but a shelf of fifty files no longer touches the disk fifty times per frame.
+    private final class Remembered {
+        private let lock = NSLock()
+        private var names: [UUID: (value: String, at: Date)] = [:]
+        private var icons: [UUID: (value: NSImage, at: Date)] = [:]
+        static let shared = Remembered()
+        static let lifetime: TimeInterval = 5
+
+        func name(_ id: UUID, make: () -> String) -> String {
+            lock.lock()
+            if let hit = names[id], Date().timeIntervalSince(hit.at) < Self.lifetime { lock.unlock(); return hit.value }
+            lock.unlock()
+            let value = make()
+            lock.lock(); names[id] = (value, Date()); lock.unlock()
+            return value
+        }
+
+        func icon(_ id: UUID, make: () -> NSImage) -> NSImage {
+            lock.lock()
+            if let hit = icons[id], Date().timeIntervalSince(hit.at) < Self.lifetime { lock.unlock(); return hit.value }
+            lock.unlock()
+            let value = make()
+            lock.lock(); icons[id] = (value, Date()); lock.unlock()
+            return value
+        }
+    }
+
+    var displayName: String { Remembered.shared.name(id) { computedDisplayName } }
+
+    private var computedDisplayName: String {
         switch kind {
         case .file(let bookmarkData):
             let bookmark = Bookmark(data: bookmarkData)
@@ -129,7 +160,9 @@ struct ShelfItem: Identifiable, Codable, Equatable, Sendable {
         else { return nil }
     }
     
-    var icon: NSImage {
+    var icon: NSImage { Remembered.shared.icon(id) { computedIcon } }
+
+    private var computedIcon: NSImage {
         guard case .file = kind else {
             return Self.thumbnailSymbolImage(systemName: kind.iconSymbolName) ?? NSImage()
         }
