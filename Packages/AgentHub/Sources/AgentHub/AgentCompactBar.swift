@@ -51,7 +51,14 @@ struct AgentCompactBar: View {
                                        statusExtra: collapsedStatusExtra, hasNotch: hasNotch)
     }
 
-    private var totalWidth: CGFloat { collapsedBarWidth + quotaReserve.extraWidth + rightWingReserve }
+    /// The host centres this bar on the notch and does not shift it, so extra width is always split evenly between
+    /// the wings. On a notched screen the bar therefore grows by twice what the needier wing lacks: that wing gets
+    /// exactly what it needs and the gap between the wings stays over the notch (growing by only the shortfall would
+    /// leave the chip's tail half under the notch). Without a notch the chip just takes its own width.
+    private var totalWidth: CGFloat {
+        let extra = hasNotch ? 2 * max(quotaReserve.extraWidth, rightWingReserve) : quotaReserve.extraWidth + rightWingReserve
+        return collapsedBarWidth + extra
+    }
 
     var body: some View {
         HStack(spacing: 0) {
