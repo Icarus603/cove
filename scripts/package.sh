@@ -10,7 +10,12 @@
 set -euo pipefail
 cd "${0:A:h}/.."
 
-IDENTITY="${CODESIGN_IDENTITY:--}"
+# Signing identity: CODESIGN_IDENTITY, else the local self-signed "Cove Local Signing" certificate if it exists (so macOS
+# keeps recognising the app across rebuilds and updates and does not reset Accessibility and similar grants), else ad hoc.
+LOCAL_HASH="$(security find-identity -p codesigning 2>/dev/null | awk '/"Cove Local Signing"/ {print $2; exit}')"
+IDENTITY="${CODESIGN_IDENTITY:-${LOCAL_HASH:--}}"
+LOCAL_SIGNING=0
+[[ "$IDENTITY" == "$LOCAL_HASH" && -n "$LOCAL_HASH" ]] && LOCAL_SIGNING=1
 OUT="build/release"
 APP="$OUT/Build/Products/Release/Cove.app"
 DMG="build/Cove.dmg"
@@ -18,11 +23,11 @@ DMG="build/Cove.dmg"
 rm -rf "$OUT" "$DMG"
 # Let Xcode sign everything (helpers, Sparkle's XPC services, the app) so entitlements and nesting come out right.
 SIGN_ARGS=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= CODE_SIGN_IDENTITY="$IDENTITY")
-[[ "$IDENTITY" != "-" ]] && SIGN_ARGS+=(ENABLE_HARDENED_RUNTIME=YES OTHER_CODE_SIGN_FLAGS="--timestamp")
+[[ "$IDENTITY" != "-" && "$LOCAL_SIGNING" == 0 ]] && SIGN_ARGS+=(ENABLE_HARDENED_RUNTIME=YES OTHER_CODE_SIGN_FLAGS="--timestamp")
 xcodebuild -project boringNotch.xcodeproj -scheme boringNotch -configuration Release \
   -derivedDataPath "$OUT" "${SIGN_ARGS[@]}" build | tail -3
 codesign --verify --deep --strict "$APP"
-echo "signature ok ($IDENTITY)"
+echo "signature ok ($IDENTITY)"; codesign -dr - "$APP" 2>&1 | grep -E "designated" | cut -c1-160
 
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"

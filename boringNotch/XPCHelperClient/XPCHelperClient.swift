@@ -97,55 +97,36 @@ final class XPCHelperClient: NSObject {
     
     // MARK: - Accessibility
     
+    // The media-key tap lives in Cove itself, so Cove is the process that needs the permission: the switch you turn on for
+    // "Cove" in System Settings is the one these read. (Checking the helper process instead asked for a second entry for it.)
+
     nonisolated func requestAccessibilityAuthorization() {
-        Task {
-            let service = await MainActor.run {
-                ensureRemoteService()
-            }
-            try? await service.withService { service in
-                service.requestAccessibilityAuthorization()
-            }
+        DispatchQueue.main.async {
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            _ = AXIsProcessTrustedWithOptions(options)
         }
     }
-    
+
     nonisolated func isAccessibilityAuthorized() async -> Bool {
-        do {
-            let service = await MainActor.run {
-                ensureRemoteService()
-            }
-            let result: Bool = try await service.withContinuation { service, continuation in
-                service.isAccessibilityAuthorized { authorized in
-                    continuation.resume(returning: authorized)
-                }
-            }
-            await MainActor.run {
-                notifyAuthorizationChange(result)
-            }
-            return result
-        } catch {
-            return false
+        let result = AXIsProcessTrusted()
+        await MainActor.run {
+            notifyAuthorizationChange(result)
         }
+        return result
     }
-    
+
     nonisolated func ensureAccessibilityAuthorization(promptIfNeeded: Bool) async -> Bool {
-        do {
-            let service = await MainActor.run {
-                ensureRemoteService()
-            }
-            let result: Bool = try await service.withContinuation { service, continuation in
-                service.ensureAccessibilityAuthorization(promptIfNeeded) { authorized in
-                    continuation.resume(returning: authorized)
-                }
-            }
-            await MainActor.run {
-                notifyAuthorizationChange(result)
-            }
-            return result
-        } catch {
-            return false
+        if AXIsProcessTrusted() {
+            await MainActor.run { notifyAuthorizationChange(true) }
+            return true
         }
+        if promptIfNeeded { requestAccessibilityAuthorization() }
+        try? await Task.sleep(for: .milliseconds(500))
+        let result = AXIsProcessTrusted()
+        await MainActor.run { notifyAuthorizationChange(result) }
+        return result
     }
-    
+
     // MARK: - Keyboard Brightness
     
     nonisolated func isKeyboardBrightnessAvailable() async -> Bool {
