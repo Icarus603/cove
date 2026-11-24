@@ -28,6 +28,7 @@ enum AppModules {
         registry.register(ShelfModule())
         registry.register(PlayerModule())
         registry.register(PhotosModule())
+        registry.register(NotesModule())
         registry.register(MarketsModule())
         registry.register(agents)
         return registry

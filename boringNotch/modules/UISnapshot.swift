@@ -263,6 +263,10 @@ enum UISnapshot {
                 let report = await PhotoChecks.run(fixtures: URL(fileURLWithPath: fixtures), many: env["COVE_SHOT_PHOTO_MANY"].map { URL(fileURLWithPath: $0) })
                 try? report.write(toFile: dir + "/photo_library.txt", atomically: true, encoding: .utf8)
             }
+            // COVE_SHOT_NOTES_LOGIC=1: the notes store against a throw-away folder (no window, nothing of the user's touched).
+            if env["COVE_SHOT_NOTES_LOGIC"] != nil {
+                try? notesChecks().write(toFile: dir + "/notes_logic.txt", atomically: true, encoding: .utf8)
+            }
             // COVE_SHOT_HEADLESS=1: stop after the logic checks, before any window is shown.
             if env["COVE_SHOT_HEADLESS"] != nil {
                 try? "done".write(toFile: dir + "/DONE", atomically: true, encoding: .utf8)
@@ -1029,6 +1033,81 @@ enum UISnapshot {
     /// One pass over the new screens for a human to look at: captures only, no input sent anywhere. Run once.
     private static func windowShotOffscreen<V: View>(_ root: V, size: CGSize, name: String, dir: String) async {
         await render(root, size: size, name: name, dir: dir, settle: 0.6)
+    }
+
+    /// The notes store: creating, editing, ordering, deleting, saving and reading back.
+    static func notesChecks() -> String {
+        var lines: [String] = []
+        var failures = 0
+        func check(_ name: String, _ ok: Bool, _ detail: String = "") {
+            lines.append((ok ? "PASS " : "FAIL ") + name + (ok || detail.isEmpty ? "" : "  [\(detail)]"))
+            if !ok { failures += 1 }
+        }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("cove-notes-check-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        UserDefaults.standard.removeObject(forKey: "notes.selected")
+        let store = NotesStore(directory: folder)
+        check("starts empty", store.notes.isEmpty && store.selectedID == nil)
+        let first = store.newNote()
+        check("New makes a note and selects it", store.notes.count == 1 && store.selectedID == first.id)
+        let again = store.newNote()
+        check("New twice does not pile up blank notes", store.notes.count == 1 && again.id == first.id)
+        store.update(first.id, text: "Shopping\nmilk, eggs")
+        check("title is the first line, preview the next", store.notes[0].title == "Shopping" && store.notes[0].preview == "milk, eggs")
+        let second = store.newNote()
+        store.update(second.id, text: "Ideas")
+        check("the newest edit is listed first", store.notes.map(\.id) == [second.id, first.id])
+        store.update(first.id, text: "Shopping\nmilk, eggs, tea")
+        check("editing an older note brings it to the top", store.notes.map(\.id) == [first.id, second.id])
+        check("an unchanged text changes nothing", { let t = store.notes[0].modified; store.update(first.id, text: "Shopping\nmilk, eggs, tea"); return store.notes[0].modified == t }())
+        check("search finds by any part of the text", store.notes(matching: "tea").map(\.id) == [first.id] && store.notes(matching: "IDEAS").map(\.id) == [second.id])
+        check("an empty search lists everything, a missing word nothing", store.notes(matching: "  ").count == 2 && store.notes(matching: "zzz").isEmpty)
+        let blank = store.newNote()
+        store.removeIfEmpty(blank.id)
+        check("a note left empty goes away by itself", store.notes.count == 2 && store.selectedID != blank.id)
+        let spaces = store.newNote()
+        store.update(spaces.id, text: "  \n ")
+        store.removeIfEmpty(spaces.id)
+        check("blanks and newlines count as empty", store.notes.count == 2)
+        store.selectedID = first.id
+        store.flush()
+        let reopened = NotesStore(directory: folder)
+        check("notes are read back after saving", reopened.notes.map(\.text) == store.notes.map(\.text) && reopened.notes.map(\.id) == store.notes.map(\.id))
+        check("the selected note is remembered", reopened.selectedID == first.id)
+        store.delete(first.id)
+        check("deleting selects a neighbour", store.notes.count == 1 && store.selectedID == second.id)
+        let afterDelete = NotesStore(directory: folder)
+        check("a deleted note stays deleted", afterDelete.notes.map(\.id) == [second.id])
+        // A file that cannot be read is kept, not overwritten.
+        let broken = FileManager.default.temporaryDirectory.appendingPathComponent("cove-notes-broken-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: broken) }
+        try? FileManager.default.createDirectory(at: broken, withIntermediateDirectories: true)
+        try? "not json".write(to: broken.appendingPathComponent("notes.json"), atomically: true, encoding: .utf8)
+        let fromBroken = NotesStore(directory: broken)
+        let kept = (try? FileManager.default.contentsOfDirectory(atPath: broken.path)) ?? []
+        check("an unreadable file is moved aside and the list starts empty", fromBroken.notes.isEmpty && kept.contains { $0.hasPrefix("notes.unreadable-") })
+        // ---- export
+        let n1 = Note(text: "Meeting: a/b\nagenda"), n2 = Note(text: "meeting: a/b"), n3 = Note(text: "   \n"), n4 = Note(text: "..hidden")
+        check("a file name has no slash or colon", NotesExport.baseName(for: n1) == "Meeting- a-b")
+        check("an empty note is named Note", NotesExport.baseName(for: n3) == "Note")
+        check("a leading dot is dropped, so the file is not hidden", NotesExport.baseName(for: n4) == "hidden")
+        check("a long title is cut", NotesExport.baseName(for: Note(text: String(repeating: "x", count: 200))).count == 60)
+        let names = NotesExport.fileNames(for: [n1, n2, n3])
+        check("the same title twice gets a number", names[n1.id] == "Meeting- a-b.md" && names[n2.id] == "Meeting- a-b 2.md" && names[n3.id] == "Note.md")
+        check("the text goes out as written, with a final newline", NotesExport.markdown(for: n1) == "Meeting: a/b\nagenda\n" && NotesExport.markdown(for: Note(text: "x\n")) == "x\n")
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("cove-notes-out-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: out) }
+        try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        try? "keep me".write(to: out.appendingPathComponent("Meeting- a-b.md"), atomically: true, encoding: .utf8)
+        let written = NotesExport.exportAll([n1, n2], to: out)
+        let files = ((try? FileManager.default.contentsOfDirectory(atPath: out.path)) ?? []).sorted()
+        check("export all writes every note and never overwrites a file", written == 2 && files.count == 3 && (try? String(contentsOf: out.appendingPathComponent("Meeting- a-b.md"))) == "keep me", "\(files)")
+        store.deleteAll()
+        let afterClear = NotesStore(directory: folder)
+        check("delete all leaves nothing, on disk too", store.notes.isEmpty && afterClear.notes.isEmpty && store.selectedID == nil)
+        UserDefaults.standard.removeObject(forKey: "notes.selected")
+        lines.append(failures == 0 ? "ALL PASSED" : "\(failures) FAILED")
+        return lines.joined(separator: "\n") + "\n"
     }
 
     /// The photo editor off screen: both pages, with and without a crop, at a roomy and at the smallest window size.

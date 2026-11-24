@@ -38,6 +38,7 @@ struct SettingsView: View {
             ("Shelf", "Shelf", "books.vertical"),
             ("Player", "Player", "play.rectangle"),
             ("Photos", "Photos", "photo.on.rectangle"),
+            ("Notes", "Notes", "note.text"),
             ("Markets", "Markets", "chart.line.uptrend.xyaxis"),
         ]),
         ("Agents", [
@@ -115,6 +116,8 @@ struct SettingsView: View {
                     PlayerSettings()
                 case "Photos":
                     PhotoSettings()
+                case "Notes":
+                    NotesSettings()
                 case "Markets":
                     MarketsSettings()
                 case "Shortcuts":

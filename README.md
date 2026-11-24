@@ -53,7 +53,7 @@ Requires **macOS 14 or later**. Built for Apple Silicon.
    reminders, accessibility, music). Grant only what you will use; everything else works without them.
 2. **Open the notch.** Point at the notch and hold for a moment; it opens. Move away and it closes. (You can change this to
    a click in **Settings → General**.)
-3. **Switch tabs** with the icons along the top: Home, Shelf, Player, Photos, Markets, Agents.
+3. **Switch tabs** with the icons along the top: Home, Shelf, Player, Photos, Notes, Markets, Agents.
 4. **Open Settings** with the gear in the open notch, or the Cove icon in the menu bar. **Settings → Modules** chooses which
    tabs you see, and the pages under **Features** set up each one.
 5. **Make it yours.** **Settings → Advanced** has a custom accent colour; every sidebar, button and focus ring follows it.
@@ -101,6 +101,16 @@ Requires **macOS 14 or later**. Built for Apple Silicon.
 | **F** | Full screen |
 | Esc | Zoom out, then close |
 
+### Jot things down (Notes)
+
+1. Open the **Notes** tab and press **New**. Click the page on the right and write; the first line is the title. Press **Esc** or
+   click anywhere else when you are done. It is saved as you type.
+2. Notes are listed on the left, the newest edit first. Search by any word.
+3. The arrow on a note exports it as a **Markdown** file (the text exactly as written, named after its first line); the bin deletes it
+   after asking. **Settings → Notes** exports all of them into a folder, one file each.
+
+> Notes are plain text kept on this Mac in `~/Library/Application Support/Cove/Notes/notes.json`. Nothing is sent anywhere.
+
 ### Watch the markets (Markets)
 
 1. Open the **Markets** tab. Add pairs with the search; they appear as live cards.
@@ -137,6 +147,7 @@ Plugins → Add plugin…** (or drop its folder into `~/Library/Application Supp
 | **Shelf** | A drag-and-drop shelf for files, with AirDrop. |
 | **Player** | An audio and video library with playlists, a queue, a pop-out window and a mini player. |
 | **Photos** | A reference-based photo library with your own albums, a large window and a quick-look strip. |
+| **Notes** | Plain-text notes with search and Markdown export, kept on this Mac. |
 | **Markets** | Live Binance prices and candlestick charts. |
 | **Agents** | Live status of Claude Code, Codex, Gemini CLI, Cursor and 30+ other coding agents. |
 | **Plugins** | External programs that draw a tab of their own. |
@@ -201,7 +212,7 @@ screenshot harness (`scripts/shots.sh`). `python3 scripts/make_banner.py` redraw
 
 ```
 boringNotch/              the app (a fork of Boring.Notch)
-  modules/                Player, Photos, Markets and the other tabs
+  modules/                Player, Photos, Notes, Markets and the other tabs
 Packages/NotchKit         NotchModule and ModuleRegistry: the tab system
 Packages/AgentHub         CodeIsland's engine, hook bridge and agent tab
 Packages/PluginKit        the plugin host

@@ -21,7 +21,7 @@ final class AnchorBox {
     }
 }
 
-private struct AnchorView: NSViewRepresentable {
+struct AnchorView: NSViewRepresentable {
     let box: AnchorBox
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
