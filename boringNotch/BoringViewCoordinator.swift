@@ -166,13 +166,10 @@ class BoringViewCoordinator: ObservableObject {
         Task { @MainActor in
             helloAnimationRunning = false
 
-            if Defaults[.hudReplacement] {
-                let authorized = await XPCHelperClient.shared.isAccessibilityAuthorized()
-                if !authorized {
-                    Defaults[.hudReplacement] = false
-                } else {
-                    await MediaKeyInterceptor.shared.start(promptIfNeeded: false)
-                }
+            // The choice is kept even when the permission is missing at launch (a rebuilt or re-signed app starts without it): the
+            // Settings page says access is needed, and the replacement starts by itself as soon as it is granted.
+            if Defaults[.hudReplacement], await XPCHelperClient.shared.isAccessibilityAuthorized() {
+                await MediaKeyInterceptor.shared.start(promptIfNeeded: false)
             }
         }
     }
