@@ -59,7 +59,7 @@ struct SettingsView: View {
     ]
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: .constant(.all)) {
             // The system draws a sidebar selection in the asset's fixed accent and ignores .tint, so the rows are
             // plain buttons and the selection is drawn here in the user's accent.
             List {
@@ -147,6 +147,8 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationSplitViewStyle(.balanced)
+        // The sidebar is always there and cannot be dragged away (there is no button to bring it back).
+        .background(SidebarGuard())
         .toolbar(removing: .sidebarToggle)
         .toolbar {
             ToolbarItem(placement: .principal) {
