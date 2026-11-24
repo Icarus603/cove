@@ -1,7 +1,0 @@
-{
-  "id": "app.cove.example.sysmon",
-  "name": { "default": "System monitor", "zh-Hant": "系統監控", "zh-Hans": "系统监控", "ja": "システムモニタ" },
-  "symbol": "cpu",
-  "executable": "run.sh",
-  "order": 310
-}
