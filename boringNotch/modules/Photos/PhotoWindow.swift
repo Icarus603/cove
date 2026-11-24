@@ -120,15 +120,17 @@ struct PhotoWindowView: View {
     @StateObject private var model = PhotoBrowserModel()
     @ObservedObject private var library = PhotoLibrary.shared
     @State private var confirmRemove = false
+    /// The sidebar can be made narrower or wider (the same range as the Player library window), and stays as it was left.
+    @AppStorage("photos.sidebarWidth") private var sidebarWidth: Double = 220
 
     var body: some View {
         // The same skeleton as the Player library window: a sidebar that is always there, and beside it a header (title, count,
         // search, Add), an action bar that is always on screen, the content, and a footer.
         HStack(spacing: 0) {
             PhotoSidebar(model: model)
-                .frame(width: 220)
+                .frame(width: CGFloat(sidebarWidth))
                 .background(VisualEffectView(material: .sidebar, blendingMode: .behindWindow).ignoresSafeArea())
-            Divider()
+            SidebarDivider(width: $sidebarWidth)
             VStack(spacing: 0) {
                 header
                 Divider()
@@ -445,5 +447,35 @@ private struct PhotoEditorHost: View {
             }
         }
         .task(id: photoID) { photo = await PhotoLibrary.shared.photo(photoID) }
+    }
+}
+
+/// The line between the sidebar and the page, which can be dragged to change the sidebar's width (190 to 300 pt, as in the Player
+/// library window). The pointer shows it can be moved while it is over the line.
+private struct SidebarDivider: View {
+    @Binding var width: Double
+    @State private var startWidth: Double?
+    @State private var hovering = false
+    static let range: ClosedRange<Double> = 190...300
+
+    var body: some View {
+        Divider()
+            .overlay {
+                Color.clear
+                    .frame(width: 9)
+                    .contentShape(Rectangle())
+                    .onHover { inside in
+                        hovering = inside
+                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                    }
+                    .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                        .onChanged { drag in
+                            let start = startWidth ?? width
+                            startWidth = start
+                            width = min(max(start + drag.translation.width, Self.range.lowerBound), Self.range.upperBound)
+                        }
+                        .onEnded { _ in startWidth = nil })
+            }
+            .onDisappear { if hovering { NSCursor.pop(); hovering = false } }
     }
 }

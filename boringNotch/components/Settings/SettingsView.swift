@@ -94,7 +94,7 @@ struct SettingsView: View {
             .listStyle(SidebarListStyle())
             .tint(.effectiveAccent)
             .toolbar(removing: .sidebarToggle)
-            .navigationSplitViewColumnWidth(200)
+            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)   // the same range as the Player library window
         } detail: {
             Group {
                 switch selectedTab {
