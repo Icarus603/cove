@@ -24,8 +24,8 @@ struct MusicPlayerView: View {
     }
 }
 
-/// Cover art drawn in a square without distorting it. Square art fills the square as before; wide art (a YouTube thumbnail, a
-/// video frame) is shown whole, centred, over a blurred, enlarged copy of itself so the square has no empty bars.
+/// Cover art drawn in a square without distorting it. Square art fills the square; any other shape (a YouTube thumbnail, a video
+/// frame) fills it too, cropped in the middle. Both sit in the same slot, in the same place.
 struct SquareArtwork: View {
     let image: NSImage
 
@@ -34,29 +34,18 @@ struct SquareArtwork: View {
         return abs(image.size.width / image.size.height - 1) < 0.04
     }
 
-    /// How a wide picture sits in the closed notch's cover slot, for a thumbnail here and for a playing video in the Player's
-    /// mini bar alike: a little smaller than the slot, pushed toward the notch so it has room on its outer side.
-    static let wideInset: CGFloat = 2
-    static let wideShift: CGFloat = 4
-
-    /// Clearly a rectangle (a YouTube thumbnail is 16:9, a video frame 4:3 or wider): at least a fifth longer one way. Anything
-    /// near square, a Spotify or Apple Music cover included, is not, and keeps its place and size exactly.
-    static func isWide(_ image: NSImage) -> Bool {
-        guard image.size.width > 0, image.size.height > 0 else { return false }
-        let ratio = image.size.width / image.size.height
-        return ratio >= 1.2 || ratio <= 1 / 1.2
-    }
-
     var body: some View {
         if isSquare {
             Image(nsImage: image).resizable().aspectRatio(1, contentMode: .fit)
         } else {
-            ZStack {
-                Image(nsImage: image).resizable().scaledToFill().blur(radius: 10).opacity(0.85)
-                Image(nsImage: image).resizable().scaledToFit()
-            }
-            .aspectRatio(1, contentMode: .fit)
-            .clipped()
+            // A video's picture (a YouTube thumbnail, a frame) fills the whole square, cropped in the middle, as a playing video in the
+            // Player's mini bar does: shown whole, it left a small patch with bars above and below.
+            // The square comes first and the picture is laid over it: a picture scaled to fill is bigger than the square it is given
+            // in one direction, and used on its own it would make the view itself a rectangle.
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .overlay { Image(nsImage: image).resizable().scaledToFill() }
+                .clipped()
         }
     }
 }

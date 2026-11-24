@@ -411,19 +411,15 @@ struct ContentView: View {
     @ViewBuilder
     func MusicLiveActivity() -> some View {
         HStack {
-            // A picture that is not square (a YouTube thumbnail) filled its slot right to the screen's corner and looked crowded:
-            // a little smaller and pushed toward the notch, it has room on its outer side. The slot, and so the layout, is the same.
+            // Whatever the cover is (a song's, a YouTube thumbnail, a video frame), it fills the same square slot, in the same place.
             let slot = max(0, vm.effectiveClosedNotchHeight - 12)
-            let wide = SquareArtwork.isWide(musicManager.albumArt)
             SquareArtwork(image: musicManager.albumArt)
                 .clipShape(
                     RoundedRectangle(
                         cornerRadius: MusicPlayerImageSizes.cornerRadiusInset.closed)
                 )
                 .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
-                .frame(width: wide ? slot - SquareArtwork.wideInset : slot, height: wide ? slot - SquareArtwork.wideInset : slot)
-                .frame(width: slot, height: slot, alignment: .trailing)
-                .offset(x: wide ? SquareArtwork.wideShift : 0)
+                .frame(width: slot, height: slot)
 
             Rectangle()
                 .fill(.black)

@@ -21,7 +21,6 @@ final class FloatingPlayerController: NSObject, NSWindowDelegate {
 
     private(set) var panel: PlayerPanel?
     private var observers: Set<AnyCancellable> = []
-    private var sizeObserver: AnyCancellable?
 
     func show() {
         if let panel {
@@ -48,15 +47,11 @@ final class FloatingPlayerController: NSObject, NSWindowDelegate {
         applyLevel(panel)
         self.panel = panel
 
-        // Title and shape follow the video.
+        // The title follows the video. The window's shape does not: it is as big and as wide or tall as the user makes it, and the
+        // picture sits inside it with black bars (a window locked to the picture's shape could not be made taller than the screen's
+        // width allowed).
         let engine = PlayerEngine.shared
         engine.$current.compactMap { $0?.title }.sink { [weak panel] title in panel?.title = title }.store(in: &observers)
-        engine.$current.sink { [weak self] _ in
-            self?.sizeObserver = engine.player.currentItem?.publisher(for: \.presentationSize).receive(on: DispatchQueue.main).sink { size in
-                guard size.width > 0, size.height > 0 else { return }
-                MainActor.assumeIsolated { self?.fit(to: size) }
-            }
-        }.store(in: &observers)
 
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -93,28 +88,11 @@ final class FloatingPlayerController: NSObject, NSWindowDelegate {
         panel.level = UserDefaults.standard.bool(forKey: PlayerSettingsKey.floatOnTop) ? .floating : .normal
     }
 
-    /// Keeps the window the shape of the picture, and gives a newly opened one a size that suits it.
-    private func fit(to size: CGSize) {
-        guard let panel, !panel.styleMask.contains(.fullScreen) else { return }
-        panel.contentAspectRatio = size
-        let current = panel.contentRect(forFrameRect: panel.frame).size
-        let height = current.width * size.height / size.width
-        if abs(height - current.height) > 2 {
-            var frame = panel.frame
-            let content = NSSize(width: current.width, height: height)
-            let newFrame = panel.frameRect(forContentRect: NSRect(origin: .zero, size: content))
-            frame.origin.y += frame.height - newFrame.height
-            frame.size = newFrame.size
-            panel.setFrame(frame, display: true, animate: false)
-        }
-    }
-
     // MARK: NSWindowDelegate
 
     func windowWillEnterFullScreen(_ notification: Notification) {
-        // A floating level and a fixed picture shape both get in the way of the full-screen Space.
+        // A floating level gets in the way of the full-screen Space.
         panel?.level = .normal
-        panel?.resizeIncrements = NSSize(width: 1, height: 1)
     }
 
     func windowDidEnterFullScreen(_ notification: Notification) {
@@ -127,10 +105,7 @@ final class FloatingPlayerController: NSObject, NSWindowDelegate {
 
     func windowDidExitFullScreen(_ notification: Notification) {
         PlayerUI.shared.isFullScreen = false
-        if let panel {
-            applyLevel(panel)
-            if let size = PlayerEngine.shared.player.currentItem?.presentationSize, size.width > 0 { fit(to: size) }
-        }
+        if let panel { applyLevel(panel) }
         if wantsHidden { wantsHidden = false; panel?.orderOut(nil) }
     }
 
