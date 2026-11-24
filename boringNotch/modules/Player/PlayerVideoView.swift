@@ -76,7 +76,13 @@ struct PlayerVideoView: View {
             PlayerIconButton(symbol: ui.isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
                              help: ui.isFullScreen ? LocalizedStringKey("Exit full screen") : LocalizedStringKey("Full screen")) { ui.toggleFullScreen() }
         }
-        .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 18)
+        // In the popped-out window the row is a toolbar row: the standard height, level with the window buttons, and starting clear of
+        // them (full screen has none).
+        .frame(height: isFloating && !ui.isFullScreen ? ToolbarMetrics.height : nil)
+        .padding(.leading, isFloating && !ui.isFullScreen ? ImmersiveChrome.leadingInsetForButtons : 10)
+        .padding(.trailing, 10)
+        .padding(.top, isFloating && !ui.isFullScreen ? ImmersiveChrome.controlsTopInset : 8)
+        .padding(.bottom, 18)
         .background(LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom))
     }
 

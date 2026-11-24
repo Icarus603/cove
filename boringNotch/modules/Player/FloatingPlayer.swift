@@ -32,8 +32,8 @@ final class FloatingPlayerController: NSObject, NSWindowDelegate {
         let panel = PlayerPanel(contentRect: NSRect(x: 0, y: 0, width: 720, height: 405),
                                 styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
                                 backing: .buffered, defer: false)
-        panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden
+        ImmersiveChrome.configure(panel, toolbarIdentifier: "CovePlayerToolbar")
         panel.isMovableByWindowBackground = true
         panel.backgroundColor = .black
         panel.hidesOnDeactivate = false
@@ -93,6 +93,7 @@ final class FloatingPlayerController: NSObject, NSWindowDelegate {
     func windowWillEnterFullScreen(_ notification: Notification) {
         // A floating level gets in the way of the full-screen Space.
         panel?.level = .normal
+        ImmersiveChrome.willEnterFullScreen(panel)
     }
 
     func windowDidEnterFullScreen(_ notification: Notification) {
@@ -101,10 +102,12 @@ final class FloatingPlayerController: NSObject, NSWindowDelegate {
 
     func windowWillExitFullScreen(_ notification: Notification) {
         PlayerUI.shared.isFullScreen = false
+        ImmersiveChrome.willExitFullScreen(panel)
     }
 
     func windowDidExitFullScreen(_ notification: Notification) {
         PlayerUI.shared.isFullScreen = false
+        ImmersiveChrome.didExitFullScreen(panel)
         if let panel { applyLevel(panel) }
         if wantsHidden { wantsHidden = false; panel?.orderOut(nil) }
     }

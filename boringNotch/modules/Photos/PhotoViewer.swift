@@ -285,7 +285,7 @@ struct PhotoViewer: View {
                 .help(Text(isGIF ? "Animated GIFs cannot be edited" : "Edit this photo (E)"))
         }
         .frame(height: ToolbarMetrics.height)
-        .padding(.horizontal, 16).padding(.top, 9)
+        .padding(.horizontal, 16).padding(.top, ImmersiveChrome.controlsTopInset)
     }
 
     private func floating<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {

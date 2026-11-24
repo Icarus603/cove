@@ -38,17 +38,12 @@ final class PhotoWindowController: NSObject, NSWindowDelegate {
     func show(scope: PhotoScope = .all, photo: Int64? = nil) {
         pending = (scope, photo)
         if window == nil {
-            // Built once and never changed afterwards, so the window buttons are always in the one standard place: an empty toolbar
-            // gives the title bar the height of the other Cove windows, the title bar is see-through so a photo can run to the top
-            // edge, and the sidebar is laid out by hand (a system split view would put its own button in that toolbar).
+            // The sidebar is laid out by hand (a system split view would put its own button in the toolbar); the title bar is the
+            // shared immersive one (see ImmersiveChrome).
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 760),
-                                  styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                                  styleMask: [.titled, .closable, .miniaturizable, .resizable],
                                   backing: .buffered, defer: false)
-            window.titlebarAppearsTransparent = true
-            let toolbar = NSToolbar(identifier: "CovePhotoToolbar")
-            toolbar.showsBaselineSeparator = false
-            window.toolbar = toolbar
-            window.toolbarStyle = .unified
+            ImmersiveChrome.configure(window, toolbarIdentifier: "CovePhotoToolbar")
             window.title = String(localized: "Photos")
             window.isReleasedWhenClosed = false
             window.minSize = NSSize(width: 820, height: 520)
@@ -70,47 +65,9 @@ final class PhotoWindowController: NSObject, NSWindowDelegate {
 
     func toggleFullScreen() { window?.toggleFullScreen(nil) }
 
-    // Full screen has no window buttons, and an empty toolbar would show as a blank strip across the top, so it is hidden before the
-    // window starts to grow. Hiding it moves the window buttons to the corner (measured: 19 pt becomes 9 pt), so they are made
-    // invisible first and only shown again once the toolbar is back and they are in their one place. Nothing wrong is ever on screen.
-    func windowWillEnterFullScreen(_ notification: Notification) {
-        setButtonsVisible(false)
-        window?.toolbar?.isVisible = false
-    }
-
-    func windowWillExitFullScreen(_ notification: Notification) {
-        // The system hands the buttons back to the window as it starts to shrink; they are made invisible again from the first
-        // moment (and again a turn and a moment later, in case it hands them over late).
-        setButtonsVisible(false)
-        window?.toolbar?.isVisible = true
-        DispatchQueue.main.async { [weak self] in self?.setButtonsVisible(false) }
-        for delay in [0.05, 0.15, 0.3] { DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.setButtonsVisible(false) } }
-    }
-
-    func windowDidExitFullScreen(_ notification: Notification) {
-        window?.toolbar?.isVisible = true
-        restoreToolbar()
-        // One turn later, when the title bar has laid itself out.
-        DispatchQueue.main.async { [weak self] in
-            self?.restoreToolbar()
-            self?.setButtonsVisible(true)
-        }
-    }
-
-    private func setButtonsVisible(_ visible: Bool) {
-        guard let window else { return }
-        for type in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            window.standardWindowButton(type)?.alphaValue = visible ? 1 : 0
-        }
-    }
-
-    private func restoreToolbar() {
-        guard let window, let toolbar = window.toolbar else { return }
-        window.toolbar = nil
-        window.toolbar = toolbar
-        toolbar.isVisible = true
-        window.toolbarStyle = .unified
-    }
+    func windowWillEnterFullScreen(_ notification: Notification) { ImmersiveChrome.willEnterFullScreen(window) }
+    func windowWillExitFullScreen(_ notification: Notification) { ImmersiveChrome.willExitFullScreen(window) }
+    func windowDidExitFullScreen(_ notification: Notification) { ImmersiveChrome.didExitFullScreen(window) }
 
     func consumePending() -> (scope: PhotoScope, photo: Int64?)? {
         defer { pending = nil }
