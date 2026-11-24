@@ -58,10 +58,14 @@ struct SettingsView: View {
         ]),
     ]
 
-    var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            // The system draws a sidebar selection in the asset's fixed accent and ignores .tint, so the rows are
-            // plain buttons and the selection is drawn here in the user's accent.
+    /// The sidebar can be made narrower or wider, within 190 to 300 pt (as in the Player library window), and stays as it was left.
+    @AppStorage("settings.sidebarWidth") private var sidebarWidth: Double = 220
+
+    private var pageTitle: LocalizedStringKey {
+        Self.sidebarGroups.flatMap(\.items).first { $0.id == selectedTab }?.title ?? "General"
+    }
+
+    private var sidebar: some View {
             List {
                 ForEach(Self.sidebarGroups.indices, id: \.self) { index in
                     Section(Self.sidebarGroups[index].title) {
@@ -93,10 +97,23 @@ struct SettingsView: View {
             }
             .listStyle(SidebarListStyle())
             .tint(.effectiveAccent)
-            .toolbar(removing: .sidebarToggle)
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)   // the same range as the Player library window
-        } detail: {
-            Group {
+    }
+
+    /// The page's name, and on the first page the way to quit (it used to sit in the title bar).
+    private var header: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(pageTitle).font(.system(size: 17, weight: .bold)).lineLimit(1)
+            Spacer()
+            if selectedTab == "General" {
+                ToolbarPillButton(title: "Quit app") { NSApp.terminate(nil) }.fixedSize()
+            }
+        }
+        .frame(height: ToolbarMetrics.height + 8)
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+
+    private var detail: some View {
+        Group {
                 switch selectedTab {
                 case "General":
                     GeneralSettings()
@@ -143,18 +160,22 @@ struct SettingsView: View {
                 default:
                     GeneralSettings()
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationSplitViewStyle(.balanced)
-        // The sidebar is always there and cannot be dragged away (there is no button to bring it back).
-        .background(SidebarGuard())
-        .toolbar(removing: .sidebarToggle)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("")
-                    .frame(width: 0, height: 0)
-                    .accessibilityHidden(true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    var body: some View {
+        // Laid out by hand rather than with a system split view: that one lets the sidebar be dragged away entirely, and with no button to
+        // bring it back it is gone for good. This one has a width between 190 and 300 pt and cannot leave it.
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: CGFloat(sidebarWidth))
+                .background(VisualEffectView(material: .sidebar, blendingMode: .behindWindow).ignoresSafeArea())
+            SidebarDivider(width: $sidebarWidth)
+            VStack(spacing: 0) {
+                header
+                Divider()
+                detail
             }
         }
         .formStyle(.grouped)
@@ -304,12 +325,6 @@ struct GeneralSettings: View {
 
             NotchBehaviour()
 
-        }
-        .toolbar {
-            Button("Quit app") {
-                NSApp.terminate(self)
-            }
-            .controlSize(.extraLarge)
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("General")

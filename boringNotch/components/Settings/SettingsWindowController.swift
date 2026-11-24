@@ -41,10 +41,12 @@ class SettingsWindowController: NSWindowController {
         guard let window = window else { return }
         
         window.title = "Cove Settings"
-        window.titlebarAppearsTransparent = false
-        window.titleVisibility = .visible
-        window.toolbarStyle = .unified
-        window.isMovableByWindowBackground = true
+        // The title bar is the shared one (see ImmersiveChrome): the window buttons in the standard place, the page's own name
+        // drawn by the page. The title is kept for the Window menu and Mission Control, not drawn.
+        MainActor.assumeIsolated { ImmersiveChrome.configure(window, toolbarIdentifier: "CoveSettingsToolbar") }
+        window.titleVisibility = .hidden
+        // Not movable by its background: the sidebar's divider is dragged, and must not take the window with it.
+        window.isMovableByWindowBackground = false
         
         // Make it behave like a regular app window with proper Spaces support
         window.collectionBehavior = [.managed, .participatesInCycle, .fullScreenAuxiliary]
