@@ -38,3 +38,18 @@ struct SidebarDivider: View {
             .onDisappear { if hovering { NSCursor.pop(); hovering = false } }
     }
 }
+
+extension View {
+    /// The sidebar's material behind the whole column, and over the title bar's band along the top: rows that scroll up are hidden
+    /// there, instead of passing under the window buttons and their text.
+    func sidebarBackground() -> some View {
+        self
+            .background(VisualEffectView(material: .sidebar, blendingMode: .behindWindow).ignoresSafeArea())
+            .overlay(alignment: .top) {
+                VisualEffectView(material: .sidebar, blendingMode: .behindWindow)
+                    .frame(height: ImmersiveChrome.titleBarBand)
+                    .ignoresSafeArea(.container, edges: .top)
+                    .allowsHitTesting(false)
+            }
+    }
+}

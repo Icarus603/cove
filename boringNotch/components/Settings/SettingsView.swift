@@ -99,7 +99,8 @@ struct SettingsView: View {
             .tint(.effectiveAccent)
     }
 
-    /// The page's name, and on the first page the way to quit (it used to sit in the title bar).
+    /// The page's name, and on the first page the way to quit. It sits in the title bar's own band, level with the window buttons,
+    /// as the page name did before: the band is not spent twice (once empty, once for a header).
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
             Text(pageTitle).font(.system(size: 17, weight: .bold)).lineLimit(1)
@@ -108,8 +109,9 @@ struct SettingsView: View {
                 ToolbarPillButton(title: "Quit app") { NSApp.terminate(nil) }.fixedSize()
             }
         }
-        .frame(height: ToolbarMetrics.height + 8)
-        .padding(.horizontal, 16).padding(.vertical, 10)
+        .frame(height: ToolbarMetrics.height)
+        .padding(.horizontal, 16)
+        .frame(height: ImmersiveChrome.titleBarBand, alignment: .center)
     }
 
     private var detail: some View {
@@ -170,13 +172,17 @@ struct SettingsView: View {
         HStack(spacing: 0) {
             sidebar
                 .frame(width: CGFloat(sidebarWidth))
-                .background(VisualEffectView(material: .sidebar, blendingMode: .behindWindow).ignoresSafeArea())
+                .sidebarBackground()
             SidebarDivider(width: $sidebarWidth)
+                .ignoresSafeArea(.container, edges: .top)
             VStack(spacing: 0) {
                 header
-                Divider()
+                Rectangle()
+                    .fill(Color(NSColor.separatorColor))
+                    .frame(height: 0.5)
                 detail
             }
+            .ignoresSafeArea(.container, edges: .top)
         }
         .formStyle(.grouped)
         // Fills the window: a fixed width left the content as a 700 pt column in the middle of a zoomed or enlarged window.

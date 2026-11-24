@@ -82,11 +82,7 @@ public final class AgentsModule: NotchModule {
     /// The notch grows to the content (a pending approval is taller than an empty list) up to a cap.
     public var preferredContentSize: CGSize? {
         guard measuredHeight > 0 else { return nil }
-        // The plain list reports about 34 pt more than the cards and usage line it draws (padding below the last row), which
-        // showed up as empty black under the list; a request card is measured to its edge and needs nothing taken off.
-        let isList: Bool = { switch runtime.appState.surface { case .sessionList, .collapsed: return true; default: return false } }()
-        let slack: CGFloat = isList && !runtime.appState.sessions.isEmpty ? 34 : 0   // the empty notice is measured exactly
-        return CGSize(width: 600, height: min(max(measuredHeight - slack, 60) + 12, Self.maxContentHeight))
+        return CGSize(width: 600, height: min(max(measuredHeight, 60), Self.maxContentHeight))
     }
 
     func reportContentHeight(_ height: CGFloat) {
@@ -124,19 +120,15 @@ struct AgentsExpandedView: View {
     @State private var removalBannerHeight: CGFloat = 50
 
     var body: some View {
-        // The content reports its natural height so the notch can grow to fit it; whatever does not fit scrolls.
-        ScrollView(.vertical, showsIndicators: false) {
-            Group {
-                if runtime.standingAside {
-                    notice(icon: "exclamationmark.triangle", text: l10n["agents_aside"])
-                } else {
-                    surfaceContent
-                }
+        Group {
+            if runtime.standingAside {
+                notice(icon: "exclamationmark.triangle", text: l10n["agents_aside"])
+            } else {
+                surfaceContent
             }
-            .frame(maxWidth: .infinity, alignment: .top)
-            .background(GeometryReader { Color.clear.preference(key: ContentHeightKey.self, value: $0.size.height) })
         }
-        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .background(GeometryReader { Color.clear.preference(key: ContentHeightKey.self, value: $0.size.height) })
         .onPreferenceChange(ContentHeightKey.self) { onHeight($0) }
     }
 

@@ -129,8 +129,9 @@ struct PhotoWindowView: View {
         HStack(spacing: 0) {
             PhotoSidebar(model: model)
                 .frame(width: CGFloat(sidebarWidth))
-                .background(VisualEffectView(material: .sidebar, blendingMode: .behindWindow).ignoresSafeArea())
+                .sidebarBackground()
             SidebarDivider(width: $sidebarWidth)
+                .ignoresSafeArea(.container, edges: .top)
             VStack(spacing: 0) {
                 header
                 Divider()
