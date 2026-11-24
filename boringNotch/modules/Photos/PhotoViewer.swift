@@ -276,7 +276,6 @@ struct PhotoViewer: View {
                     }
                     .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().help(Text("Add to album"))
                     iconButton("info.circle", help: "Info", active: showInfo) { showInfo.toggle() }
-                    iconButton("arrow.up.left.and.arrow.down.right", help: "Full screen") { PhotoWindowController.shared.toggleFullScreen() }
                 }
             }
             ToolbarPillButton(title: "Edit", symbol: "slider.horizontal.3", prominent: true) { if let id = model.viewing { model.edit(id) } }

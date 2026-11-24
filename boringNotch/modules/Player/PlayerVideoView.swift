@@ -73,8 +73,12 @@ struct PlayerVideoView: View {
                     if isFloating { ui.popIn() } else { ui.popOut() }
                 }
             }
-            PlayerIconButton(symbol: ui.isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
-                             help: ui.isFullScreen ? LocalizedStringKey("Exit full screen") : LocalizedStringKey("Full screen")) { ui.toggleFullScreen() }
+            // The popped-out window has the green window button for full screen; the button is for the notch, and for getting out of
+            // full screen (where the window buttons are hidden until the pointer goes to the top).
+            if !isFloating || ui.isFullScreen {
+                PlayerIconButton(symbol: ui.isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                                 help: ui.isFullScreen ? LocalizedStringKey("Exit full screen") : LocalizedStringKey("Full screen")) { ui.toggleFullScreen() }
+            }
         }
         // In the popped-out window the row is a toolbar row: the standard height, level with the window buttons, and starting clear of
         // them (full screen has none).
