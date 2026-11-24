@@ -19,6 +19,9 @@ import SwiftUI
 enum ImmersiveChrome {
     /// Space above a 28 pt control (ToolbarMetrics.height) so that it is level with the window buttons.
     static let controlsTopInset: CGFloat = 9
+    /// The band along the top that the title bar owns (measured: the content starts 66 pt down). A press in it is the window's to take,
+    /// to drag the window by, so anything that is dragged (the crop box) must stay below it.
+    static let titleBarBand: CGFloat = 66
     /// Space to leave at the left, for the window buttons, in front of anything that starts at the left edge.
     static let leadingInsetForButtons: CGFloat = 86
 

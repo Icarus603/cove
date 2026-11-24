@@ -94,8 +94,11 @@ struct PhotoEditorView: View {
             .frame(width: size.width, height: size.height)
         case .ready:
             if let image = session.image {
-                let fitted = Self.fit(image.size, in: CGSize(width: max(size.width - 72, 10), height: max(size.height - 104, 10)))
-                let frame = CGRect(x: (size.width - fitted.width) / 2, y: (size.height - fitted.height) / 2, width: fitted.width, height: fitted.height)
+                // The picture, and so the crop box that is dragged about on it, sits below the title bar's band: a press inside the band
+                // drags the window, which made the box impossible to use near the top.
+                let top = ImmersiveChrome.titleBarBand + 8, bottom: CGFloat = 52
+                let fitted = Self.fit(image.size, in: CGSize(width: max(size.width - 72, 10), height: max(size.height - top - bottom, 10)))
+                let frame = CGRect(x: (size.width - fitted.width) / 2, y: top + (max(size.height - top - bottom, 10) - fitted.height) / 2, width: fitted.width, height: fitted.height)
                 ZStack {
                     Image(nsImage: image).resizable().interpolation(.high).frame(width: fitted.width, height: fitted.height)
                         .position(x: frame.midX, y: frame.midY)
