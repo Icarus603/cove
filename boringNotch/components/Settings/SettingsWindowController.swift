@@ -110,6 +110,9 @@ class SettingsWindowController: NSWindowController {
             return
         }
 
+        // Opened afresh, the window is its usual size again, however big it was made last time (the window is only hidden when it is
+        // closed, so it would otherwise keep that size until Cove quits).
+        window?.setContentSize(NSSize(width: 700, height: 600))
         place()
         window?.orderFrontRegardless()
         window?.makeKeyAndOrderFront(nil)
