@@ -11,7 +11,7 @@
 
 **English** · [繁體中文](README.zh-Hant.md) · [简体中文](README.zh-Hans.md)
 
-[Why Cove](#why-cove) · [Install](#install) · [Using Cove](#using-cove) · [Features](#features) · [Build](#build-from-source) · [Plugins](docs/PLUGINS.md)
+[Why Cove](#why-cove) · [Install](#install) · [Using Cove](#using-cove) · [Features](#features) · [Build](#build-from-source)
 
 </div>
 
@@ -133,12 +133,6 @@ Requires **macOS 14 or later**. Built for Apple Silicon.
 **Drag files onto the notch** to park them on the Shelf, then drag them out into another app, or send them with AirDrop. In
 Cove, dropping always means the Shelf; the Player and Photos libraries use their **Add** buttons.
 
-### Plugins
-
-A plugin is a folder with a manifest and an executable that draws a tab of its own. Add one with **Settings → Modules →
-Plugins → Add plugin…** (or drop its folder into `~/Library/Application Support/Cove/Plugins/`) and it appears in the notch.
-[docs/PLUGINS.md](docs/PLUGINS.md) shows how to write one.
-
 ## Features
 
 | Tab | What it is |
@@ -150,7 +144,6 @@ Plugins → Add plugin…** (or drop its folder into `~/Library/Application Supp
 | **Notes** | Plain-text notes with search and Markdown export, kept on this Mac. |
 | **Markets** | Live Binance prices and candlestick charts. |
 | **Agents** | Live status of Claude Code, Codex, Gemini CLI, Cursor and 30+ other coding agents. |
-| **Plugins** | External programs that draw a tab of their own. |
 
 ### Player
 
@@ -185,7 +178,7 @@ From [CodeIsland](https://github.com/wxtsky/CodeIsland): live status for Claude 
 coding agents; approve tool calls and answer questions from the notch; a mascot beside the closed notch; opening the notch
 from it lands on this tab.
 
-### Home, Shelf and Plugins
+### Home and Shelf
 
 Media controls, calendar, mirror, HUDs and the drag-and-drop shelf come from
 [Boring.Notch](https://github.com/TheBoredTeam/boring.notch).
@@ -204,7 +197,7 @@ You need Xcode.
 xcodebuild -project boringNotch.xcodeproj -scheme boringNotch build
 ```
 
-Each package has its own tests: `swift test` inside `Packages/NotchKit`, `Packages/AgentHub` and `Packages/PluginKit`.
+Each package has its own tests: `swift test` inside and `Packages/AgentHub`.
 Headless checks for the Player and Photos logic live in `scripts/` (`test-player.sh`, `test-indicators.sh`) and in the
 screenshot harness (`scripts/shots.sh`). `python3 scripts/make_banner.py` redraws the banner above.
 
@@ -215,10 +208,9 @@ boringNotch/              the app (a fork of Boring.Notch)
   modules/                Player, Photos, Notes, Markets and the other tabs
 Packages/NotchKit         NotchModule and ModuleRegistry: the tab system
 Packages/AgentHub         CodeIsland's engine, hook bridge and agent tab
-Packages/PluginKit        the plugin host
 Design/make_icons.swift   draws the app and menu bar icons
 scripts/                  packaging, update feed, banner and test scripts
-docs/                     the plugin guide and README images
+docs/                     README images
 ```
 
 ## Releasing

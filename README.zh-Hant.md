@@ -11,7 +11,7 @@
 
 [English](README.md) · **繁體中文** · [简体中文](README.zh-Hans.md)
 
-[為什麼做 Cove](#為什麼做-cove) · [安裝](#安裝) · [怎麼使用](#怎麼使用-cove) · [功能](#功能) · [從原始碼建置](#從原始碼建置) · [外掛](docs/PLUGINS.md)
+[為什麼做 Cove](#為什麼做-cove) · [安裝](#安裝) · [怎麼使用](#怎麼使用-cove) · [功能](#功能) · [從原始碼建置](#從原始碼建置)
 
 </div>
 
@@ -102,10 +102,6 @@
 
 **把檔案拖到劉海上**，暫放在暫存器，再拖到別的 App，或用 AirDrop 傳出去。在 Cove 裡，拖放永遠代表暫存器；播放器和相簿資料庫用的是各自的「新增」按鈕。
 
-### 外掛
-
-外掛是一個資料夾，內含 manifest 和一個可執行檔，自己畫一個分頁。用 **設定 → 模組 → 外掛 → 新增外掛…** 加入（或把資料夾放進 `~/Library/Application Support/Cove/Plugins/`），它就會出現在劉海裡。寫法見 [docs/PLUGINS.md](docs/PLUGINS.md)。
-
 ## 功能
 
 | 分頁 | 內容 |
@@ -117,7 +113,6 @@
 | **記事本** | 純文字記事，可搜尋、可匯出 Markdown，存在這台 Mac 上。 |
 | **行情** | Binance 即時價格與 K 線圖。 |
 | **智慧代理** | Claude Code、Codex、Gemini CLI、Cursor 等 30 多種程式碼代理的即時狀態。 |
-| **外掛** | 自己畫一個分頁的外部程式。 |
 
 ### 播放器
 
@@ -148,7 +143,7 @@
 
 來自 [CodeIsland](https://github.com/wxtsky/CodeIsland)：Claude Code、Codex、Gemini CLI、Cursor 等 30 多種程式碼代理的即時狀態；可在劉海裡批准工具呼叫、回答問題；收合的劉海旁有隻吉祥物，從它展開劉海會直接落在這個分頁。
 
-### 首頁、暫存器和外掛
+### 首頁和暫存器
 
 媒體控制、行事曆、鏡子、HUD 和拖放暫存架來自 [Boring.Notch](https://github.com/TheBoredTeam/boring.notch)。
 
@@ -166,7 +161,7 @@
 xcodebuild -project boringNotch.xcodeproj -scheme boringNotch build
 ```
 
-每個套件都有自己的測試：在 `Packages/NotchKit`、`Packages/AgentHub`、`Packages/PluginKit` 裡執行 `swift test`。播放器與相簿邏輯的無頭檢查在 `scripts/`（`test-player.sh`、`test-indicators.sh`）和截圖測試腳本（`scripts/shots.sh`）裡。`python3 scripts/make_banner.py` 會重新繪製上面的橫幅。
+每個套件都有自己的測試：在 `Packages/NotchKit`、`Packages/AgentHub` 裡執行 `swift test`。播放器與相簿邏輯的無頭檢查在 `scripts/`（`test-player.sh`、`test-indicators.sh`）和截圖測試腳本（`scripts/shots.sh`）裡。`python3 scripts/make_banner.py` 會重新繪製上面的橫幅。
 
 ### 目錄結構
 
@@ -175,10 +170,9 @@ boringNotch/              應用程式本體（Boring.Notch 的分支）
   modules/                播放器、相簿、記事本、行情等分頁
 Packages/NotchKit         NotchModule 與 ModuleRegistry：分頁系統
 Packages/AgentHub         CodeIsland 的引擎、hook 橋接和代理分頁
-Packages/PluginKit        外掛宿主
 Design/make_icons.swift   繪製 App 與選單列圖示
 scripts/                  打包、更新源、橫幅與測試腳本
-docs/                     外掛指南與 README 圖片
+docs/                     README 圖片
 ```
 
 ## 發版

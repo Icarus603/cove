@@ -2,18 +2,16 @@
 //  ModulesSettings.swift
 //  boringNotch
 //
-//  Settings pages for notch tabs, coding agents and plugins.
+//  Settings pages for notch tabs and coding agents.
 //
 
 import AgentHub
 import NotchKit
-import PluginKit
 import SwiftUI
 
 /// Which tabs appear in the notch.
 struct ModulesSettings: View {
     @ObservedObject private var registry = AppModules.registry
-    @ObservedObject private var plugins = AppModules.plugins
 
     var body: some View {
         Form {
@@ -33,12 +31,6 @@ struct ModulesSettings: View {
                 Text("Choose which tabs appear in the notch.")
                     .foregroundStyle(.secondary)
                     .font(.caption)
-            }
-
-            Section {
-                PluginSettingsView(manager: plugins)
-            } header: {
-                Text("Plugins")
             }
         }
         .formStyle(.grouped)

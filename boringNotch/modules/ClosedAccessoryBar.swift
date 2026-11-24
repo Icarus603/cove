@@ -2,7 +2,7 @@
 //  ClosedAccessoryBar.swift
 //  boringNotch
 //
-//  Draws module accessories (agent mascot, plugin badges) on either side of the closed notch.
+//  Draws module accessories (the agent mascot) on either side of the closed notch.
 //  Each wing is placed from the notch's own edge outwards, so none of it hides behind the notch.
 //
 

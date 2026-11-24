@@ -11,7 +11,7 @@
 
 [English](README.md) · [繁體中文](README.zh-Hant.md) · **简体中文**
 
-[为什么做 Cove](#为什么做-cove) · [安装](#安装) · [怎么使用](#怎么使用-cove) · [功能](#功能) · [从源代码构建](#从源代码构建) · [插件](docs/PLUGINS.md)
+[为什么做 Cove](#为什么做-cove) · [安装](#安装) · [怎么使用](#怎么使用-cove) · [功能](#功能) · [从源代码构建](#从源代码构建)
 
 </div>
 
@@ -102,10 +102,6 @@
 
 **把文件拖到刘海上**，暂放在暂存器，再拖到别的 App，或用 AirDrop 传出去。在 Cove 里，拖放永远代表暂存器；播放器和相簿资料库用的是各自的「添加」按钮。
 
-### 插件
-
-插件是一个文件夹，内含 manifest 和一个可执行文件，自己画一个分页。用 **设置 → 模块 → 插件 → 添加插件…** 加入（或把文件夹放进 `~/Library/Application Support/Cove/Plugins/`），它就会出现在刘海里。写法见 [docs/PLUGINS.md](docs/PLUGINS.md)。
-
 ## 功能
 
 | 分页 | 内容 |
@@ -117,7 +113,6 @@
 | **记事本** | 纯文本记事，可搜索、可导出 Markdown，存在这台 Mac 上。 |
 | **行情** | Binance 实时价格与 K 线图。 |
 | **智能体** | Claude Code、Codex、Gemini CLI、Cursor 等 30 多种代码代理的实时状态。 |
-| **插件** | 自己画一个分页的外部程序。 |
 
 ### 播放器
 
@@ -148,7 +143,7 @@
 
 来自 [CodeIsland](https://github.com/wxtsky/CodeIsland)：Claude Code、Codex、Gemini CLI、Cursor 等 30 多种代码代理的实时状态；可在刘海里批准工具调用、回答问题；收合的刘海旁有只吉祥物，从它展开刘海会直接落在这个分页。
 
-### 主页、暂存器和插件
+### 主页和暂存器
 
 媒体控制、行事历、镜子、HUD 和拖放暂存架来自 [Boring.Notch](https://github.com/TheBoredTeam/boring.notch)。
 
@@ -166,7 +161,7 @@
 xcodebuild -project boringNotch.xcodeproj -scheme boringNotch build
 ```
 
-每个套件都有自己的测试：在 `Packages/NotchKit`、`Packages/AgentHub`、`Packages/PluginKit` 里运行 `swift test`。播放器与相簿逻辑的无头检查在 `scripts/`（`test-player.sh`、`test-indicators.sh`）和截屏测试脚本（`scripts/shots.sh`）里。`python3 scripts/make_banner.py` 会重新绘制上面的横幅。
+每个套件都有自己的测试：在 `Packages/NotchKit`、`Packages/AgentHub` 里运行 `swift test`。播放器与相簿逻辑的无头检查在 `scripts/`（`test-player.sh`、`test-indicators.sh`）和截屏测试脚本（`scripts/shots.sh`）里。`python3 scripts/make_banner.py` 会重新绘制上面的横幅。
 
 ### 目录结构
 
@@ -175,10 +170,9 @@ boringNotch/              应用程序本体（Boring.Notch 的分支）
   modules/                播放器、相簿、记事本、行情等分页
 Packages/NotchKit         NotchModule 与 ModuleRegistry：分页系统
 Packages/AgentHub         CodeIsland 的引擎、hook 桥接和代理分页
-Packages/PluginKit        插件宿主
 Design/make_icons.swift   绘制 App 与菜单栏图标
 scripts/                  打包、更新源、横幅与测试脚本
-docs/                     插件指南与 README 图片
+docs/                     README 图片
 ```
 
 ## 发版

@@ -2,7 +2,7 @@
 //  AppModules.swift
 //  boringNotch
 //
-//  Hosts the NotchKit registry, the built-in modules, agents, games and plugins.
+//  Hosts the NotchKit registry, the built-in modules and agents.
 //
 
 import AgentHub
@@ -10,7 +10,6 @@ import AppKit
 import Combine
 import KeyboardShortcuts
 import NotchKit
-import PluginKit
 import SwiftUI
 
 @MainActor
@@ -39,13 +38,6 @@ enum AppModules {
     /// dragged onto the shelf while an agent was working never landed.
     static let barState = AgentBarState()
 
-    /// Third-party modules: external programs in the plugins folder, each switched on by the user.
-    static let plugins: PluginManager = {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Cove"
-        return PluginManager(directory: support.appendingPathComponent(name).appendingPathComponent("Plugins"), registry: registry)
-    }()
-
     private static var cancellables = Set<AnyCancellable>()
     private static var lastAttention: ModuleAttention = .none
     /// The notch was opened by a module that needed the user, not by the user.
@@ -56,7 +48,6 @@ enum AppModules {
         guard !bootstrapped else { return }
         bootstrapped = true
         _ = registry
-        plugins.reload()
 
         AgentRuntime.shared.presentHost = { present(moduleID: "builtin.agents") }
         // The desktop pet's "Open in the notch": the user asked for it, so it stays open (it is not an attention pop-up).
@@ -83,7 +74,6 @@ enum AppModules {
     }
 
     static func shutdown() {
-        plugins.shutdown()
         AgentRuntime.shared.stop()
     }
 
