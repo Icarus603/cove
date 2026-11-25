@@ -79,32 +79,38 @@ struct PhotoViewer: View {
     private var canEdit: Bool { photo.map { !$0.isMissing && PhotoExporter.canEdit($0.url) } ?? false }
 
     var body: some View {
-        ZStack {
-            Color.black
-            GeometryReader { geo in
-                ZStack { content }
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .onAppear { container = geo.size }
-                    .onChange(of: geo.size) { _, size in container = size }
-            }
-            .background(ChartInput(
-                onScroll: { dx, dy, _ in handleScroll(dx: dx, dy: dy) },
-                onMagnify: { magnification in zoom(to: scale * (1 + magnification)) }))
+        HStack(spacing: 0) {
+            ZStack {
+                Color.black
+                GeometryReader { geo in
+                    ZStack { content }
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .onAppear { container = geo.size }
+                        .onChange(of: geo.size) { _, size in container = size }
+                }
+                .background(ChartInput(
+                    onScroll: { dx, dy, _ in handleScroll(dx: dx, dy: dy) },
+                    onMagnify: { magnification in zoom(to: scale * (1 + magnification)) }))
 
-            VStack(spacing: 0) {
-                topBar
-                Spacer()
+                VStack(spacing: 0) {
+                    topBar
+                    Spacer()
+                }
+                .opacity(model.chromeVisible || showInfo ? 1 : 0)
+                HStack {
+                    arrow("chevron.left", offset: -1, enabled: (model.viewingIndex ?? 0) > 0 || model.slideshowActive)
+                    Spacer()
+                    arrow("chevron.right", offset: 1, enabled: (model.viewingIndex ?? 0) < model.ids.count - 1 || model.slideshowActive)
+                }
+                .padding(.horizontal, 10)
+                .opacity(model.chromeVisible ? 1 : 0)
             }
-            .opacity(model.chromeVisible ? 1 : 0)
-            HStack {
-                arrow("chevron.left", offset: -1, enabled: (model.viewingIndex ?? 0) > 0 || model.slideshowActive)
-                Spacer()
-                arrow("chevron.right", offset: 1, enabled: (model.viewingIndex ?? 0) < model.ids.count - 1 || model.slideshowActive)
-            }
-            .padding(.horizontal, 10)
-            .opacity(model.chromeVisible ? 1 : 0)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if showInfo, let photo { infoPanel(photo).transition(.move(edge: .trailing)) }
+            if showInfo, let photo {
+                infoPanel(photo)
+                    .transition(.move(edge: .trailing))
+            }
         }
         .environment(\.colorScheme, .dark)
         .animation(.easeInOut(duration: 0.2), value: model.chromeVisible)
@@ -317,10 +323,23 @@ struct PhotoViewer: View {
     // MARK: Info
 
     private func infoPanel(_ photo: Photo) -> some View {
-        HStack {
-            Spacer()
+        HStack(spacing: 0) {
+            Divider()
             VStack(alignment: .leading, spacing: 10) {
-                Text("Info").font(.headline)
+                HStack {
+                    Text("Info").font(.headline)
+                    Spacer()
+                    Button { showInfo = false } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, height: 24)
+                            .background(Circle().fill(Color.white.opacity(0.08)))
+                    }
+                    .buttonStyle(.plain)
+                    .help(Text("Close Info"))
+                }
+                .frame(height: ToolbarMetrics.height)
                 row("Name", photo.name)
                 row("Taken", photo.taken.formatted(date: .long, time: .standard))
                 row("Dimensions", "\(photo.width) × \(photo.height)")
@@ -334,14 +353,15 @@ struct PhotoViewer: View {
                     .controlSize(.small)
                 Spacer()
             }
-            .padding(14)
+            .padding(.horizontal, 14)
+            .padding(.top, ImmersiveChrome.controlsTopInset)
+            .padding(.bottom, 14)
             .frame(width: 260)
             .frame(maxHeight: .infinity, alignment: .top)
-            .background(.ultraThinMaterial)
+            .background(Color(white: 0.11))
             .foregroundStyle(.white)
             .environment(\.colorScheme, .dark)
         }
-        .padding(.top, 56)
     }
 
     private func row(_ title: LocalizedStringKey, _ value: String) -> some View {
