@@ -246,7 +246,6 @@ struct PhotoViewer: View {
         case .escape:
             if scale > 1.01 { zoom(to: 1) } else { model.closeViewer() }
             return .handled
-        case .space: model.toggleSlideshow(); return .handled
         default: break
         }
         switch press.characters {

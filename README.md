@@ -95,7 +95,6 @@ Requires **macOS 14 or later**. Built for Apple Silicon.
 | In the viewer | |
 | --- | --- |
 | ← / → | Previous / next photo |
-| Space | Start or stop a slideshow |
 | Double-click, **+** / **−**, pinch | Zoom; **0** fits, **1** actual size |
 | **I** | Info (name, date, size, albums, folder) |
 | **F** | Full screen |

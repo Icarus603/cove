@@ -187,6 +187,7 @@ final class PhotoBrowserModel: ObservableObject {
     var viewingIndex: Int? { viewing.flatMap { ids.firstIndex(of: $0) } }
 
     func open(_ id: Int64) {
+        stopSlideshow()
         viewing = id
         // A photo opens as a picture and nothing else; the controls come when the pointer moves and go again when it rests.
         chromeVisible = false
