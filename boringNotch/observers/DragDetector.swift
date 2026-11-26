@@ -43,8 +43,10 @@ final class DragDetector {
         let validTypes: [NSPasteboard.PasteboardType] = [
             .fileURL,
             NSPasteboard.PasteboardType(UTType.url.identifier),
-            .string
-        ]
+            .string,
+            .png,
+            .tiff
+        ] + NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) }
         return dragPasteboard.types?.contains(where: validTypes.contains) ?? false
     }
 

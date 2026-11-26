@@ -230,7 +230,6 @@ struct ContentView: View {
         // edge whatever its own height is; otherwise the hosting view centers short content and the notch floats.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .compositingGroup()
-        .background(dragDetector)
         .preferredColorScheme(.dark)
         .environmentObject(vm)
         .onChange(of: vm.anyDropZoneTargeting) { _, isTargeted in
@@ -384,7 +383,6 @@ struct ContentView: View {
                 .allowsHitTesting(vm.notchState == .open)
             }
         }
-        .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], delegate: GeneralDropTargetDelegate(isTargeted: $vm.generalDropTargeting))
     }
 
     @ViewBuilder
@@ -505,22 +503,6 @@ struct ContentView: View {
         )
     }
 
-    @ViewBuilder
-    var dragDetector: some View {
-        if Defaults[.boringShelf] && vm.notchState == .closed {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-        .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], isTargeted: $vm.dragDetectorTargeting) { providers in
-            vm.dropEvent = true
-            ShelfStateViewModel.shared.load(providers)
-            return true
-        }
-        } else {
-            EmptyView()
-        }
-    }
-
     private func doOpen() {
         withAnimation(animationSpring) {
             vm.open()
@@ -596,26 +578,6 @@ struct FullScreenDropDelegate: DropDelegate {
         return true
     }
 
-}
-
-struct GeneralDropTargetDelegate: DropDelegate {
-    @Binding var isTargeted: Bool
-
-    func dropEntered(info: DropInfo) {
-        isTargeted = true
-    }
-
-    func dropExited(info: DropInfo) {
-        isTargeted = false
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        return DropProposal(operation: .cancel)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        return false
-    }
 }
 
 #Preview {

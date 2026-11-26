@@ -12,19 +12,58 @@ import UniformTypeIdentifiers
 
 /// What a drag carries, turned into the item providers the shelf already knows how to store.
 enum NotchDropHandler {
-    static func providers(from pasteboard: NSPasteboard) async -> [NSItemProvider] {
-        var result: [NSItemProvider] = []
+    struct PasteboardSnapshot {
+        let fileURLs: [URL]
+        let promiseReceivers: [NSFilePromiseReceiver]
+        let webURL: URL?
+        let imageData: (data: Data, identifier: String)?
+        let text: String?
+    }
 
-        // Files: from Finder, or a screenshot thumbnail that carries a file URL.
+    /// Reads the drag pasteboard synchronously (must be called before `performDragOperation` returns).
+    static func snapshot(from pasteboard: NSPasteboard) -> PasteboardSnapshot {
         let fileURLs = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-        for url in fileURLs { if let provider = NSItemProvider(contentsOf: url) { result.append(provider) } }
-        if !result.isEmpty { return result }
+        let promiseReceivers = fileURLs.isEmpty
+            ? ((pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver]) ?? [])
+            : []
+        let webURL = (fileURLs.isEmpty && promiseReceivers.isEmpty)
+            ? (pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL])?.first(where: { !$0.isFileURL })
+            : nil
 
-        // File promises: apps that write the file only when it is dropped (screenshot thumbnails, browsers, Photos).
-        if let receivers = pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver], !receivers.isEmpty {
+        var imageData: (Data, String)?
+        if fileURLs.isEmpty && promiseReceivers.isEmpty && webURL == nil {
+            for type in [NSPasteboard.PasteboardType.png, .tiff] {
+                if let data = pasteboard.data(forType: type) {
+                    let identifier = type == .png ? UTType.png.identifier : UTType.tiff.identifier
+                    imageData = (data, identifier)
+                    break
+                }
+            }
+        }
+
+        let text: String? = (fileURLs.isEmpty && promiseReceivers.isEmpty && webURL == nil && imageData == nil)
+            ? pasteboard.string(forType: .string).flatMap { $0.isEmpty ? nil : $0 }
+            : nil
+
+        return PasteboardSnapshot(
+            fileURLs: fileURLs,
+            promiseReceivers: promiseReceivers,
+            webURL: webURL,
+            imageData: imageData,
+            text: text
+        )
+    }
+
+    static func providers(from snapshot: PasteboardSnapshot) async -> [NSItemProvider] {
+        if !snapshot.fileURLs.isEmpty {
+            return snapshot.fileURLs.compactMap { NSItemProvider(contentsOf: $0) }
+        }
+
+        if !snapshot.promiseReceivers.isEmpty {
+            var result: [NSItemProvider] = []
             let folder = FileManager.default.temporaryDirectory.appendingPathComponent("CoveDrops-\(UUID().uuidString)")
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            for receiver in receivers {
+            for receiver in snapshot.promiseReceivers {
                 let url: URL? = await withCheckedContinuation { continuation in
                     receiver.receivePromisedFiles(atDestination: folder, options: [:], operationQueue: .main) { url, error in
                         continuation.resume(returning: error == nil ? url : nil)
@@ -35,26 +74,24 @@ enum NotchDropHandler {
             if !result.isEmpty { return result }
         }
 
-        // A web address.
-        if let url = (pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL])?.first(where: { !$0.isFileURL }) {
+        if let url = snapshot.webURL {
             return [NSItemProvider(object: url as NSURL)]
         }
 
-        // Image data with no file behind it.
-        for type in [NSPasteboard.PasteboardType.png, .tiff] {
-            if let data = pasteboard.data(forType: type) {
-                let identifier = type == .png ? UTType.png.identifier : UTType.tiff.identifier
-                let provider = NSItemProvider(item: data as NSData, typeIdentifier: identifier)
-                provider.suggestedName = "Image"
-                return [provider]
-            }
+        if let (data, identifier) = snapshot.imageData {
+            let provider = NSItemProvider(item: data as NSData, typeIdentifier: identifier)
+            provider.suggestedName = "Image"
+            return [provider]
         }
 
-        // Plain text.
-        if let text = pasteboard.string(forType: .string), !text.isEmpty {
+        if let text = snapshot.text {
             return [NSItemProvider(object: text as NSString)]
         }
         return []
+    }
+
+    static func providers(from pasteboard: NSPasteboard) async -> [NSItemProvider] {
+        await providers(from: snapshot(from: pasteboard))
     }
 }
 
@@ -121,6 +158,11 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
         }
     }
 
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        claimRegistration()
+    }
+
     override func layout() {
         super.layout()
         claimRegistration(throttled: true)   // layout runs for every animation frame; once a quarter second is enough
@@ -159,8 +201,7 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        let result = follow(sender)
-        return result
+        follow(sender)
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { follow(sender) }
@@ -172,13 +213,13 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { takes(sender) }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let pasteboard = sender.draggingPasteboard
         guard takes(sender) else { return false }
+        let snapshot = NotchDropHandler.snapshot(from: sender.draggingPasteboard)
         let toAirDrop = overAirDrop(sender)
         viewModel.dropEvent = true
         setTargets(shelf: false, airDrop: false)
         Task { @MainActor in
-            let providers = await NotchDropHandler.providers(from: pasteboard)
+            let providers = await NotchDropHandler.providers(from: snapshot)
             guard !providers.isEmpty else { return }
             if toAirDrop { viewModel.airDropHandler?(providers) } else { ShelfStateViewModel.shared.load(providers) }
         }

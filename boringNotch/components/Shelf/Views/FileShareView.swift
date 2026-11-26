@@ -26,12 +26,6 @@ struct FileShareView: View {
     var body: some View {
         dropArea
             .background(NSViewHost(view: $hostView))
-            .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data, .image], isTargeted: $vm.dropZoneTargeting) { providers in
-                interactionNonce = .init()
-                vm.dropEvent = true
-                Task { await handleDrop(providers) }
-                return true
-            }
             .onChange(of: hostView) { _, view in vm.airDropZoneView = view }
             .onAppear {
                 // The notch host view receives drops itself and hands the ones over this zone to AirDrop.
@@ -62,7 +56,7 @@ struct FileShareView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(
                             vm.dropZoneTargeting
-                                ? Color.effectiveAccent.opacity(0.9)
+                                ? Color.white.opacity(0.85)
                                 : Color.white.opacity(0.1),
                             style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [10])
                         )
@@ -89,7 +83,7 @@ struct FileShareView: View {
                     }
                     .frame(width: 34, height: 34)
                         .foregroundStyle(
-                            vm.dropZoneTargeting ? Color.effectiveAccent : Color.gray
+                            vm.dropZoneTargeting ? Color.white : Color.gray
                         )
                         .scaleEffect(
                             vm.dropZoneTargeting ? 1.06 : 1.0
