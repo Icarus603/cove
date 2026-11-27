@@ -14,6 +14,7 @@ enum OnboardingStep {
     case calendarPermission
     case remindersPermission
     case accessibilityPermission
+    case filesPermission
     case agents
     case musicPermission
     case finished
@@ -113,6 +114,28 @@ struct OnboardingView: View {
                         Task {
                             await requestAccessibilityPermission()
                             withAnimation(.easeInOut(duration: 0.6)) {
+                                step = .filesPermission
+                            }
+                        }
+                    },
+                    onSkip: {
+                        withAnimation(.easeInOut(duration: 0.6)) {
+                            step = .filesPermission
+                        }
+                    }
+                )
+                .transition(.opacity)
+
+            case .filesPermission:
+                PermissionRequestView(
+                    icon: Image(systemName: "folder.fill"),
+                    title: "Enable Files & Folders Access",
+                    description: "Cove's Shelf lets you drag and drop Word, Excel, PDF, ZIP, and other files from Finder. Folder access is needed to save file bookmarks and show previews.",
+                    privacyNote: "Your files stay on your Mac and are only accessed when you drop them onto the Shelf.",
+                    onAllow: {
+                        Task {
+                            await requestFilesPermission()
+                            withAnimation(.easeInOut(duration: 0.6)) {
                                 step = .agents
                             }
                         }
@@ -167,5 +190,28 @@ struct OnboardingView: View {
     
     func requestAccessibilityPermission() async {
         await XPCHelperClient.shared.ensureAccessibilityAuthorization(promptIfNeeded: true)
+    }
+
+    func requestFilesPermission() async {
+        let denied = await Task.detached(priority: .userInitiated) {
+            let directories: [FileManager.SearchPathDirectory] = [.desktopDirectory, .documentDirectory, .downloadsDirectory]
+            var anyDenied = false
+            for dir in directories {
+                if let url = FileManager.default.urls(for: dir, in: .userDomainMask).first {
+                    do {
+                        _ = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
+                    } catch {
+                        anyDenied = true
+                    }
+                }
+            }
+            return anyDenied
+        }.value
+
+        if denied, let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders") {
+            await MainActor.run {
+                _ = NSWorkspace.shared.open(url)
+            }
+        }
     }
 }

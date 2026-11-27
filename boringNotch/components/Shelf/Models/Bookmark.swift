@@ -9,6 +9,7 @@ import Foundation
 import AppKit
 
 struct Bookmark: Sendable, Equatable, Codable {
+    private static let fallbackURLPrefix = "cove-file-url:"
     let data: Data
 
     init(data: Data) {
@@ -19,39 +20,60 @@ struct Bookmark: Sendable, Equatable, Codable {
         guard url.isFileURL, FileManager.default.fileExists(atPath: url.path) else {
             throw NSError(domain: "Bookmark", code: 1, userInfo: [NSLocalizedDescriptionKey: "Not a valid file URL or file does not exist at \(url.path)"])
         }
-        do {
-            let bookmark = try url.bookmarkData(
-                options: .withSecurityScope,
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )
-            NSLog("✅ Successfully created bookmark for \(url.path)")
+
+        // Prefer security-scoped bookmarks, but fall back to standard/minimal bookmarks or raw URL
+        // when non-sandboxed TCC restrictions deny `open()` during bookmark creation.
+        if let bookmark = try? Self.makeBookmarkData(for: url, options: .withSecurityScope) {
             self.data = bookmark
-        } catch {
-            NSLog("❌ Failed to create bookmark for \(url.path): \(error.localizedDescription)")
-            throw error
+        } else if let bookmark = try? Self.makeBookmarkData(for: url, options: []) {
+            self.data = bookmark
+        } else if let bookmark = try? Self.makeBookmarkData(for: url, options: .minimalBookmark) {
+            self.data = bookmark
+        } else {
+            NSLog("⚠️ Falling back to raw file URL bookmark for \(url.path)")
+            self.data = Data((Self.fallbackURLPrefix + url.absoluteString).utf8)
         }
+    }
+
+    private static func makeBookmarkData(for url: URL, options: URL.BookmarkCreationOptions) throws -> Data {
+        let bookmark = try url.bookmarkData(
+            options: options,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+        NSLog("✅ Successfully created bookmark for \(url.path)")
+        return bookmark
     }
 
     func resolve() -> (url: URL?, refreshedData: Data?) {
         guard !data.isEmpty else { return (nil, nil) }
-        var isStale = false
-        do {
-            let url = try URL(
+
+        if let raw = String(data: data, encoding: .utf8), raw.hasPrefix(Self.fallbackURLPrefix) {
+            let urlString = String(raw.dropFirst(Self.fallbackURLPrefix.count))
+            return (URL(string: urlString), nil)
+        }
+
+        for resolveOptions: URL.BookmarkResolutionOptions in [[.withSecurityScope], []] {
+            var isStale = false
+            if let url = try? URL(
                 resolvingBookmarkData: data,
-                options: [.withSecurityScope],
+                options: resolveOptions,
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
-            )
-            if isStale, let newData = try? url.bookmarkData(options: [.withSecurityScope]) {
-                NSLog("⚠️ Bookmark was stale for \(url.path), refreshed")
-                return (url, newData)
+            ) {
+                if isStale {
+                    let createOptions: URL.BookmarkCreationOptions = resolveOptions.contains(.withSecurityScope) ? [.withSecurityScope] : []
+                    if let newData = try? url.bookmarkData(options: createOptions) {
+                        NSLog("⚠️ Bookmark was stale for \(url.path), refreshed")
+                        return (url, newData)
+                    }
+                }
+                return (url, nil)
             }
-            return (url, nil)
-        } catch {
-            NSLog("❌ Failed to resolve bookmark: \(error.localizedDescription)")
-            return (nil, nil)
         }
+
+        NSLog("❌ Failed to resolve bookmark")
+        return (nil, nil)
     }
 
     func resolveURL() -> URL? {
