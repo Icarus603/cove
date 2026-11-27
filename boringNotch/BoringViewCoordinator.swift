@@ -137,8 +137,8 @@ class BoringViewCoordinator: ObservableObject {
             }
         }
 
-        // Observe changes to hudReplacement
-        hudReplacementCancellable = Defaults.publisher(.hudReplacement)
+        // Observe changes to hudReplacement (skip initial emission so launch keeps the user's saved choice)
+        hudReplacementCancellable = Defaults.publisher(.hudReplacement, options: [])
             .sink { [weak self] change in
                 Task { @MainActor in
                     guard let self = self else { return }

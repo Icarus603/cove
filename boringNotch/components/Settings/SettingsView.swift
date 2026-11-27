@@ -229,7 +229,9 @@ struct GeneralSettings: View {
                     Text("Show menu bar icon")
                 }
                 .tint(.effectiveAccent)
-                LaunchAtLogin.Toggle("Launch at login")
+                LaunchAtLogin.Toggle {
+                    Text("Launch at login")
+                }
                 Defaults.Toggle(key: .showOnAllDisplays) {
                     Text("Show on all displays")
                 }
@@ -333,7 +335,6 @@ struct GeneralSettings: View {
 
         }
         .accentColor(.effectiveAccent)
-        .navigationTitle("General")
     }
 
 
@@ -397,7 +398,6 @@ struct Charge: View {
             }
         }
         .accentColor(.effectiveAccent)
-        .navigationTitle("Battery")
     }
 }
 
@@ -477,7 +477,6 @@ struct Charge: View {
 //                }
 //            }
 //        }
-//        .navigationTitle("Downloads")
 //    }
 //}
 
@@ -596,7 +595,6 @@ struct HUD: View {
             .disabled(!Defaults[.hudReplacement])
         }
         .accentColor(.effectiveAccent)
-        .navigationTitle("HUDs")
         .task {
             accessibilityAuthorized = await XPCHelperClient.shared.isAccessibilityAuthorized()
         }
@@ -717,7 +715,6 @@ struct Media: View {
             }
         }
         .accentColor(.effectiveAccent)
-        .navigationTitle("Media")
     }
 
     // Only show controller options that are available on this macOS version
@@ -828,7 +825,6 @@ struct CalendarSettings: View {
             }
         }
         .accentColor(.effectiveAccent)
-        .navigationTitle("Calendar")
         .onAppear {
             Task {
                 await calendarManager.checkCalendarAuthorization()
@@ -928,7 +924,6 @@ struct About: View {
             //            .controlSize(.extraLarge)
             CheckForUpdatesView(updater: updaterController.updater)
         }
-        .navigationTitle("About")
     }
 }
 
@@ -1037,7 +1032,6 @@ struct Shelf: View {
             }
         }
         .accentColor(.effectiveAccent)
-        .navigationTitle("Shelf")
     }
 }
 
@@ -1174,7 +1168,6 @@ struct Shelf: View {
 //            }
 //        }
 //        .accentColor(.effectiveAccent)
-//        .navigationTitle("Extensions")
 //        // TipsView()
 //        // .padding(.horizontal, 19)
 //    }
@@ -1420,7 +1413,6 @@ struct Appearance: View {
             }
         }
         .accentColor(.effectiveAccent)
-        .navigationTitle("Appearance")
     }
 
     func checkVideoInput() -> Bool {
@@ -1607,7 +1599,6 @@ struct Advanced: View {
             }
         }
         .accentColor(.effectiveAccent)
-        .navigationTitle("Advanced")
         .onAppear {
             loadCustomColor()
         }
@@ -1734,7 +1725,6 @@ struct Shortcuts: View {
             }
         }
         .accentColor(.effectiveAccent)
-        .navigationTitle("Shortcuts")
     }
 }
 

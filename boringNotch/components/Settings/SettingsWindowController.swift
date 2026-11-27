@@ -40,11 +40,10 @@ class SettingsWindowController: NSWindowController {
     private func setupWindow() {
         guard let window = window else { return }
         
-        window.title = "Cove Settings"
+        window.title = ""
         // The title bar is the shared one (see ImmersiveChrome): the window buttons in the standard place, the page's own name
-        // drawn by the page. The title is kept for the Window menu and Mission Control, not drawn.
+        // drawn by the page.
         MainActor.assumeIsolated { ImmersiveChrome.configure(window, toolbarIdentifier: "CoveSettingsToolbar") }
-        window.titleVisibility = .hidden
         // Not movable by its background: the sidebar's divider is dragged, and must not take the window with it.
         window.isMovableByWindowBackground = false
         
@@ -62,11 +61,11 @@ class SettingsWindowController: NSWindowController {
         
         // Create the SwiftUI content
         let settingsView = SettingsView(updaterController: updaterController)
-        let hostingView = NSHostingView(rootView: settingsView.coveAccent())
+        let hosting = NSHostingController(rootView: settingsView.coveAccent())
         // The window keeps its own size; a long page (Agents) scrolls inside it instead of stretching the window
         // to the content's full height, which ran off the bottom of the screen.
-        hostingView.sizingOptions = []
-        window.contentView = hostingView
+        hosting.sizingOptions = []
+        window.contentViewController = hosting
         window.contentMinSize = NSSize(width: 700, height: 480)
         if window.frame.height < 520 || window.frame.width < 700 { window.setContentSize(NSSize(width: 700, height: 600)) }
         
