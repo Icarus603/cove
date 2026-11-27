@@ -34,14 +34,12 @@ struct ModulesSettings: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Modules")
     }
 }
 
 struct AgentsSettings: View {
     var body: some View {
         AgentSettingsView()
-            .navigationTitle("Agents")
     }
 }
 
@@ -51,13 +49,13 @@ struct AgentSettingsPage: View {
 
     var body: some View {
         switch id {
-        case "AgentDisplay": AgentAppearanceSettingsView().navigationTitle("Agent Display")
-        case "AgentMascots": AgentMascotSettingsView().navigationTitle("Mascots")
-        case "AgentSound": AgentSoundSettingsView().navigationTitle("Sounds")
-        case "AgentAutomation": AgentAutomationSettingsView().navigationTitle("Automation")
-        case "AgentRemote": AgentRemoteSettingsView().navigationTitle("Remote Hosts")
-        case "AgentBuddy": AgentBuddySettingsView().navigationTitle("Buddy")
-        default: AgentHooksSettingsView().navigationTitle("Hooks")
+        case "AgentDisplay": AgentAppearanceSettingsView()
+        case "AgentMascots": AgentMascotSettingsView()
+        case "AgentSound": AgentSoundSettingsView()
+        case "AgentAutomation": AgentAutomationSettingsView()
+        case "AgentRemote": AgentRemoteSettingsView()
+        case "AgentBuddy": AgentBuddySettingsView()
+        default: AgentHooksSettingsView()
         }
     }
 }

@@ -40,7 +40,6 @@ struct MarketsSettings: View {
             accountSection
         }
         .formStyle(.grouped)
-        .navigationTitle("Markets")
         .task { await directory.loadIfNeeded() }
         .task { if hasKeys, store.portfolio == nil { await runTest() } }
     }

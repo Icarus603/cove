@@ -38,7 +38,6 @@ struct NotesSettings: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Notes")
         .confirmationDialog("Delete all \(store.notes.count) notes?", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("Delete All Notes", role: .destructive) { store.deleteAll() }
             Button("Cancel", role: .cancel) {}

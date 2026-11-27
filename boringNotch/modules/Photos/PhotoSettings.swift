@@ -70,7 +70,6 @@ struct PhotoSettings: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Photos")
         .onAppear(perform: refreshSize)
         .onChange(of: library.revision) { _, _ in refreshSize() }
         .task { await library.checkAvailability() }

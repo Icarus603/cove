@@ -78,7 +78,6 @@ struct PlayerSettings: View {
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Player")
         .confirmationDialog("Remove everything from the player?", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("Remove everything", role: .destructive) { engine.stop(); library.removeAll() }
             Button("Cancel", role: .cancel) {}
