@@ -13,6 +13,8 @@ TAG="v$VERSION"
 [[ -z "$(git tag -l "$TAG")" ]] || { echo "tag $TAG already exists"; exit 1; }
 [[ "$(git rev-parse --abbrev-ref HEAD)" == "main" ]] || { echo "not on main"; exit 1; }
 scripts/check-accent.sh
+# Nothing is committed, built or tagged while a test is failing.
+swift test --package-path Packages/NotchKit 2>&1 | tail -4
 
 # 1. Everything that has changed goes into one commit, before the build.
 git add -A

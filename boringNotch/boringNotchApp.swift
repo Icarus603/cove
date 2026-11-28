@@ -175,93 +175,73 @@ class AppDelegate: NSObject, NSApplicationDelegate {
               !NotchTextInputController.shared.isEditing else {
             return event
         }
-        let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
-
-        // Esc closes the open notch (unless FloatingPlayer is in full screen).
-        if mods.isEmpty, event.keyCode == 53 {
-            if PlayerUI.shared.isFullScreen { return event }
-            closeNotchEverywhere()
-            return nil
-        }
-
-        // ⌘1–⌘9 / ⌘[ / ⌘] switch visible tabs.
-        if mods == .command, let chars = event.charactersIgnoringModifiers {
-            let modules = AppModules.registry.visibleModules
-            if let digit = Int(chars), (1...9).contains(digit), modules.indices.contains(digit - 1) {
-                withAnimation(.smooth) {
-                    coordinator.currentView = NotchViews(id: modules[digit - 1].id)
-                }
-                return nil
-            }
-            if chars == "[" || chars == "]", !modules.isEmpty {
-                let currentIdx = modules.firstIndex { $0.id == coordinator.currentView.id } ?? 0
-                let delta = chars == "[" ? -1 : 1
-                let nextIdx = (currentIdx + delta + modules.count) % modules.count
-                withAnimation(.smooth) {
-                    coordinator.currentView = NotchViews(id: modules[nextIdx].id)
-                }
-                return nil
-            }
-        }
-
-        // In-notch Player controls (audio & video, playing or paused) matching FloatingPlayerView.
         let engine = PlayerEngine.shared
         let ui = PlayerUI.shared
-        if coordinator.currentView.id == PlayerModule.moduleID, mods.isEmpty {
-            let showingVideo = ui.mode == .video
-                && engine.current?.kind == .video
-                && !ui.isPoppedOut
-                && engine.state != .stopped
-            let chars = event.charactersIgnoringModifiers?.lowercased()
-            switch event.keyCode {
-            case 49:
-                guard !event.isARepeat else { return nil }
-                if engine.current != nil || !engine.queueOrder.isEmpty {
-                    engine.togglePlayPause()
-                } else if let first = ui.visibleItems.first {
-                    ui.play(first, in: ui.visibleItems)
-                }
-                ui.pokeControls()
-                return nil
-            case 123:
-                if engine.current != nil { engine.skip(by: -5); ui.pokeControls(); return nil }
-            case 124:
-                if engine.current != nil { engine.skip(by: 5); ui.pokeControls(); return nil }
-            case 126:
-                engine.isMuted = false
-                engine.volume = min(engine.volume + 0.05, 1)
-                ui.pokeControls()
-                return nil
-            case 125:
-                engine.volume = max(engine.volume - 0.05, 0)
-                ui.pokeControls()
-                return nil
-            default: break
-            }
-            switch chars {
-            case "m":
-                guard !event.isARepeat else { return nil }
-                engine.isMuted.toggle(); ui.pokeControls(); return nil
-            case "f":
-                guard !event.isARepeat else { return nil }
-                if showingVideo {
-                    ui.toggleFullScreen(); return nil
-                } else if engine.current?.kind == .video && !ui.isPoppedOut && engine.state != .stopped {
-                    ui.mode = .video; ui.pokeControls(); return nil
-                }
-            case "n":
-                if engine.current != nil || !engine.queueOrder.isEmpty {
-                    engine.next(); ui.pokeControls(); return nil
-                }
-            case "p":
-                if engine.current != nil || !engine.queueOrder.isEmpty {
-                    engine.previous(); ui.pokeControls(); return nil
-                }
-            default: break
-            }
-        }
+        let modules = AppModules.registry.visibleModules
+        let currentID = coordinator.currentView.id
+        let isLiveVideo = engine.current?.kind == .video && !ui.isPoppedOut && engine.state != .stopped
+        let context = NotchKeyContext(
+            tabCount: modules.count,
+            currentTabIndex: modules.firstIndex { $0.id == currentID },
+            isPlayerTab: currentID == PlayerModule.moduleID,
+            isPlayerFullScreen: ui.isFullScreen,
+            hasCurrentMedia: engine.current != nil,
+            hasQueue: !engine.queueOrder.isEmpty,
+            showingVideo: ui.mode == .video && isLiveVideo,
+            canShowVideo: isLiveVideo
+        )
+        var modifiers: KeyModifiers = []
+        let flags = event.modifierFlags
+        if flags.contains(.command) { modifiers.insert(.command) }
+        if flags.contains(.option) { modifiers.insert(.option) }
+        if flags.contains(.control) { modifiers.insert(.control) }
+        if flags.contains(.shift) { modifiers.insert(.shift) }
 
-        return event
+        let resolution = NotchKeyboard.resolve(
+            keyCode: event.keyCode, characters: event.charactersIgnoringModifiers,
+            modifiers: modifiers, isRepeat: event.isARepeat, context: context)
+        guard case .perform(let action) = resolution else { return event }
+
+        switch action {
+        case .closeNotch:
+            closeNotchEverywhere()
+        case .selectTab(let index):
+            withAnimation(.smooth) { coordinator.currentView = NotchViews(id: modules[index].id) }
+        case .player(let command):
+            perform(command, engine: engine, ui: ui)
+        }
+        return nil
+    }
+
+    @MainActor
+    private func perform(_ command: PlayerKeyCommand, engine: PlayerEngine, ui: PlayerUI) {
+        switch command {
+        case .togglePlayPause:
+            engine.togglePlayPause()
+        case .playFirstVisible:
+            if let first = ui.visibleItems.first { ui.play(first, in: ui.visibleItems) }
+        case .skip(let seconds):
+            engine.skip(by: seconds)
+        case .volumeUp:
+            engine.isMuted = false
+            engine.volume = min(engine.volume + 0.05, 1)
+        case .volumeDown:
+            engine.volume = max(engine.volume - 0.05, 0)
+        case .toggleMute:
+            engine.isMuted.toggle()
+        case .toggleFullScreen:
+            ui.toggleFullScreen()
+            return
+        case .showVideo:
+            ui.mode = .video
+        case .next:
+            engine.next()
+        case .previous:
+            engine.previous()
+        case .none:
+            return
+        }
+        ui.pokeControls()
     }
 
     /// The pointer is over the notch window, so closing it would be rude.
@@ -511,17 +491,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     private func handleOutsideMouseClick() {
-        guard isAnyNotchOpen,
-              !SharingStateManager.shared.preventNotchClose,
-              !NoteTextInputController.shared.isEditing,
-              !NotchTextInputController.shared.isEditing else {
-            return
+        guard isAnyNotchOpen else { return }
+        let openScreens = ([vm] + Array(viewModels.values)).filter { $0.notchState == .open }.map {
+            NotchScreenState(
+                isPinnedOpen: $0.isPinnedOpen, isPointerOver: $0.isMouseHovering(),
+                isDropTargeted: $0.anyDropZoneTargeting, isPopoverActive: $0.isBatteryPopoverActive)
         }
-        let openVMs = ([vm] + Array(viewModels.values)).filter { $0.notchState == .open }
-        guard openVMs.contains(where: { $0.isPinnedOpen }),
-              !openVMs.contains(where: { $0.isMouseHovering() || $0.anyDropZoneTargeting || $0.isBatteryPopoverActive }) else {
-            return
-        }
+        let isEditingText = NoteTextInputController.shared.isEditing || NotchTextInputController.shared.isEditing
+        guard NotchKeyboard.shouldCloseOnOutsideClick(
+            openScreens: openScreens, closeIsBlocked: SharingStateManager.shared.preventNotchClose,
+            isEditingText: isEditingText) else { return }
         closeNotchEverywhere()
     }
 
