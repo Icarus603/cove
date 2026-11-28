@@ -32,7 +32,7 @@ class TemporaryFileStorageService {
         let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
 
         guard url.path.hasPrefix(tempDirectory.path) else {
-            print("Attempted to remove temporary file outside temp directory: \(url.path)")
+            Log.notice("Attempted to remove temporary file outside temp directory: \(url.path)")
             return
         }
 
@@ -40,18 +40,18 @@ class TemporaryFileStorageService {
 
         do {
             try FileManager.default.removeItem(at: url)
-            print("Deleted file: \(url.path)")
+            Log.debug("Deleted file: \(url.path)")
 
             let contents = try FileManager.default.contentsOfDirectory(atPath: folderURL.path)
             if contents.isEmpty {
                 try FileManager.default.removeItem(at: folderURL)
-                print("Folder was empty, deleted folder: \(folderURL.path)")
+                Log.debug("Folder was empty, deleted folder: \(folderURL.path)")
             } else {
-                print("Folder not deleted — it still contains \(contents.count) item(s).")
+                Log.debug("Folder not deleted — it still contains \(contents.count) item(s).")
             }
 
         } catch {
-            print("Error: \(error.localizedDescription)")
+            Log.error("Error: \(error.localizedDescription)")
         }
     }
     
@@ -72,7 +72,7 @@ class TemporaryFileStorageService {
                 try data.write(to: fileURL)
                 return fileURL
             } catch {
-                print("Error: \(error)")
+                Log.error("Error: \(error)")
                 return nil
             }
             
@@ -82,7 +82,7 @@ class TemporaryFileStorageService {
             let fileURL = dirURL.appendingPathComponent(filename)
             
             guard let data = string.data(using: .utf8) else {
-                print("❌ Failed to convert text to data")
+                Log.error("Failed to convert text to data")
                 return nil
             }
             
@@ -91,7 +91,7 @@ class TemporaryFileStorageService {
                 try data.write(to: fileURL)
                 return fileURL
             } catch {
-                print("Error: \(error)")
+                Log.error("Error: \(error)")
                 return nil
             }
             
@@ -102,7 +102,7 @@ class TemporaryFileStorageService {
             
             let weblocContent = createWeblocContent(for: url)
             guard let data = weblocContent.data(using: String.Encoding.utf8) else {
-                print("❌ Failed to create webloc data")
+                Log.error("Failed to create webloc data")
                 return nil
             }
             
@@ -111,7 +111,7 @@ class TemporaryFileStorageService {
                 try data.write(to: fileURL)
                 return fileURL
             } catch {
-                print("Error: \(error)")
+                Log.error("Error: \(error)")
                 return nil
             }
         }
@@ -122,7 +122,7 @@ class TemporaryFileStorageService {
             try data.write(to: url)
             return url
         } catch {
-            print("❌ Failed to create temp file at \(url.path): \(error)")
+            Log.error("Failed to create temp file at \(url.path): \(error)")
             return nil
         }
     }
@@ -134,7 +134,7 @@ class TemporaryFileStorageService {
         do {
             try FileManager.default.createDirectory(at: workingDir, withIntermediateDirectories: true)
         } catch {
-            print("❌ Failed to create zip working directory: \(error)")
+            Log.error("Failed to create zip working directory: \(error)")
             return nil
         }
 
@@ -149,7 +149,7 @@ class TemporaryFileStorageService {
                 proc.waitUntilExit()
                 return proc.terminationStatus == 0
             } catch {
-                print("❌ Failed to run zip: \(error)")
+                Log.error("Failed to run zip: \(error)")
                 return false
             }
         }
@@ -200,7 +200,7 @@ class TemporaryFileStorageService {
                     try FileManager.default.copyItem(at: src, to: dest)
                 }
             } catch {
-                print("⚠️ Failed to copy \(src.path) to working dir: \(error)")
+                Log.error("Failed to copy \(src.path) to working dir: \(error)")
             }
         }
 
@@ -218,7 +218,7 @@ class TemporaryFileStorageService {
                     }
                 }
             } catch {
-                print("⚠️ Failed to cleanup working directory after zip: \(error)")
+                Log.error("Failed to cleanup working directory after zip: \(error)")
             }
             return archiveURL
         } else {

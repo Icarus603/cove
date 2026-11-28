@@ -30,7 +30,7 @@ struct Bookmark: Sendable, Equatable, Codable {
         } else if let bookmark = try? Self.makeBookmarkData(for: url, options: .minimalBookmark) {
             self.data = bookmark
         } else {
-            NSLog("⚠️ Falling back to raw file URL bookmark for \(url.path)")
+            Log.notice("Falling back to raw file URL bookmark for \(url.path)")
             self.data = Data((Self.fallbackURLPrefix + url.absoluteString).utf8)
         }
     }
@@ -41,7 +41,7 @@ struct Bookmark: Sendable, Equatable, Codable {
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
-        NSLog("✅ Successfully created bookmark for \(url.path)")
+        Log.info("Successfully created bookmark for \(url.path)")
         return bookmark
     }
 
@@ -64,7 +64,7 @@ struct Bookmark: Sendable, Equatable, Codable {
                 if isStale {
                     let createOptions: URL.BookmarkCreationOptions = resolveOptions.contains(.withSecurityScope) ? [.withSecurityScope] : []
                     if let newData = try? url.bookmarkData(options: createOptions) {
-                        NSLog("⚠️ Bookmark was stale for \(url.path), refreshed")
+                        Log.notice("Bookmark was stale for \(url.path), refreshed")
                         return (url, newData)
                     }
                 }
@@ -72,7 +72,7 @@ struct Bookmark: Sendable, Equatable, Codable {
             }
         }
 
-        NSLog("❌ Failed to resolve bookmark")
+        Log.error("Failed to resolve bookmark")
         return (nil, nil)
     }
 

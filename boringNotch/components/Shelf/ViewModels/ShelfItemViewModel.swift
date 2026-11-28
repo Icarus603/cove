@@ -449,7 +449,7 @@ final class ShelfItemViewModel: ObservableObject {
                             }
                             await MainActor.run { AppDelegate.current?.closeNotchEverywhere() }
                         } catch {
-                            print("❌ Failed to open with application: \(error.localizedDescription)")
+                            Log.error("Failed to open with application: \(error.localizedDescription)")
                         }
                 }
                 return
@@ -530,7 +530,7 @@ final class ShelfItemViewModel: ObservableObject {
                     if !fileURLs.isEmpty {
                         // Start security-scoped access for all URLs and keep them active
                         ShelfItemViewModel.copiedURLs = fileURLs.filter { $0.startAccessingSecurityScopedResource() }
-                        NSLog("🔐 Started security-scoped access for \(ShelfItemViewModel.copiedURLs.count) copied files")
+                        Log.debug("Started security-scoped access for \(ShelfItemViewModel.copiedURLs.count) copied files")
                         
                         // Write to pasteboard
                         pb.writeObjects(fileURLs as [NSURL])
@@ -576,7 +576,7 @@ final class ShelfItemViewModel: ObservableObject {
                             }
                         }
                     } catch {
-                        print("❌ Compress failed: \(error)")
+                        Log.error("Compress failed: \(error)")
                     }
                 }
                 
@@ -744,7 +744,7 @@ final class ShelfItemViewModel: ObservableObject {
                             }
                             await MainActor.run { AppDelegate.current?.closeNotchEverywhere() }
                         } catch {
-                            print("❌ Failed to open with application: \(error.localizedDescription)")
+                            Log.error("Failed to open with application: \(error.localizedDescription)")
                         }
                     }
                 }
@@ -773,7 +773,7 @@ final class ShelfItemViewModel: ObservableObject {
                         if response == .OK, let newURL = savePanel.url {
                             Task {
                                 do {
-                                    NSLog("🔐 Rename: moving from \(fileURL.path) to \(newURL.path) (securityScope=\(didStart))")
+                                    Log.debug("Rename: moving from \(fileURL.path) to \(newURL.path) (securityScope=\(didStart))")
 
                                     try FileManager.default.moveItem(at: fileURL, to: newURL)
 
@@ -781,7 +781,7 @@ final class ShelfItemViewModel: ObservableObject {
                                         ShelfStateViewModel.shared.updateBookmark(for: item, bookmark: newBookmark.data)
                                     }
                                 } catch {
-                                    print("❌ Failed to rename file: \(error.localizedDescription)")
+                                    Log.error("Failed to rename file: \(error.localizedDescription)")
                                 }
                                 if didStart { fileURL.stopAccessingSecurityScopedResource() }
                             }
@@ -817,7 +817,7 @@ final class ShelfItemViewModel: ObservableObject {
                         }
                     }
                 } catch {
-                    print("❌ Failed to remove background: \(error.localizedDescription)")
+                    Log.error("Failed to remove background: \(error.localizedDescription)")
                     await showErrorAlert(title: "Background Removal Failed", message: error.localizedDescription)
                 }
             }
@@ -847,7 +847,7 @@ final class ShelfItemViewModel: ObservableObject {
                         }
                     }
                 } catch {
-                    print("❌ Failed to create PDF: \(error.localizedDescription)")
+                    Log.error("Failed to create PDF: \(error.localizedDescription)")
                     await showErrorAlert(title: "PDF Creation Failed", message: error.localizedDescription)
                 }
             }
@@ -1055,7 +1055,7 @@ final class ShelfItemViewModel: ObservableObject {
                             }
                         }
                     } catch {
-                        print("❌ Failed to convert image: \(error.localizedDescription)")
+                        Log.error("Failed to convert image: \(error.localizedDescription)")
                         showErrorAlert(title: "Image Conversion Failed", message: error.localizedDescription)
                     }
                 }

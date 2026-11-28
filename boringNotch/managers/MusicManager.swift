@@ -83,9 +83,9 @@ class MusicManager: ObservableObject {
         Task { @MainActor in
             do {
                 self.isNowPlayingDeprecated = try await self.mediaChecker.checkDeprecationStatus()
-                print("Deprecation check completed: \(self.isNowPlayingDeprecated)")
+                Log.debug("Deprecation check completed: \(self.isNowPlayingDeprecated)")
             } catch {
-                print("Failed to check deprecation status: \(error). Defaulting to false.")
+                Log.error("Failed to check deprecation status: \(error). Defaulting to false.")
                 self.isNowPlayingDeprecated = false
             }
             
@@ -153,7 +153,7 @@ class MusicManager: ObservableObject {
 
     private func setActiveControllerBasedOnPreference() {
         let preferredType = Defaults[.mediaController]
-        print("Preferred Media Controller: \(preferredType)")
+        Log.debug("Preferred Media Controller: \(preferredType)")
 
         // If NowPlaying is deprecated but that's the preference, use Apple Music instead
         let controllerType = (self.isNowPlayingDeprecated && preferredType == .nowPlaying)
@@ -186,7 +186,7 @@ class MusicManager: ObservableObject {
     private func updateFromPlaybackState(_ state: PlaybackState) {
         // Check for playback state changes (playing/paused)
         if state.isPlaying != self.isPlaying {
-            NSLog("Playback state changed: \(state.isPlaying ? "Playing" : "Paused")")
+            Log.debug("Playback state changed: \(state.isPlaying ? "Playing" : "Paused")")
             withAnimation(.smooth) {
                 self.isPlaying = state.isPlaying
                 self.updateIdleState(state: state.isPlaying)
@@ -686,7 +686,7 @@ class MusicManager: ObservableObject {
     }
     func openMusicApp() {
         guard let bundleID = bundleIdentifier else {
-            print("Error: appBundleIdentifier is nil")
+            Log.error("Error: appBundleIdentifier is nil")
             return
         }
 
@@ -695,13 +695,13 @@ class MusicManager: ObservableObject {
             let configuration = NSWorkspace.OpenConfiguration()
             workspace.openApplication(at: appURL, configuration: configuration) { (app, error) in
                 if let error = error {
-                    print("Failed to launch app with bundle ID: \(bundleID), error: \(error)")
+                    Log.error("Failed to launch app with bundle ID: \(bundleID), error: \(error)")
                 } else {
-                    print("Launched app with bundle ID: \(bundleID)")
+                    Log.debug("Launched app with bundle ID: \(bundleID)")
                 }
             }
         } else {
-            print("Failed to find app with bundle ID: \(bundleID)")
+            Log.error("Failed to find app with bundle ID: \(bundleID)")
         }
     }
 

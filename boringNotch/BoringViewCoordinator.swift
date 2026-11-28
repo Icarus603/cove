@@ -110,11 +110,11 @@ class BoringViewCoordinator: ObservableObject {
             if let screen = NSScreen.screens.first(where: { $0.localizedName == legacyName }),
                let uuid = screen.displayUUID {
                 preferredScreenUUID = uuid
-                NSLog("✅ Migrated display preference from name '\(legacyName)' to UUID '\(uuid)'")
+                Log.info("Migrated display preference from name '\(legacyName)' to UUID '\(uuid)'")
             } else {
                 // Fallback to main screen if legacy screen not found
                 preferredScreenUUID = NSScreen.main?.displayUUID
-                NSLog("⚠️ Could not find display named '\(legacyName)', falling back to main screen")
+                Log.notice("Could not find display named '\(legacyName)', falling back to main screen")
             }
             // Clear legacy value after migration
             legacyPreferredScreenName = nil
@@ -176,8 +176,8 @@ class BoringViewCoordinator: ObservableObject {
     
     @objc func sneakPeekEvent(_ notification: Notification) {
         let decoder = JSONDecoder()
-        if let decodedData = try? decoder.decode(
-            SharedSneakPeek.self, from: notification.userInfo?.first?.value as! Data)
+        if let data = notification.userInfo?.first?.value as? Data,
+           let decodedData = try? decoder.decode(SharedSneakPeek.self, from: data)
         {
             let contentType =
                 decodedData.type == "brightness"
@@ -195,12 +195,12 @@ class BoringViewCoordinator: ObservableObject {
             let value = CGFloat((formatter.number(from: decodedData.value) ?? 0.0).floatValue)
             let icon = decodedData.icon
 
-            print("Decoded: \(decodedData), Parsed value: \(value)")
+            Log.debug("Decoded: \(decodedData), Parsed value: \(value)")
 
             toggleSneakPeek(status: decodedData.show, type: contentType, value: value, icon: icon)
 
         } else {
-            print("Failed to decode JSON data")
+            Log.error("Failed to decode JSON data")
         }
     }
 

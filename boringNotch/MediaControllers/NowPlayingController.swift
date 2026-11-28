@@ -416,7 +416,7 @@ actor JSONLinesPipeHandler {
                 await onLine(decodedObject)
             }
         } catch {
-            print("Error processing JSON stream: \(error)")
+            Log.error("Error processing JSON stream: \(error)")
         }
     }
     
@@ -469,7 +469,7 @@ actor JSONLinesPipeHandler {
             try fileHandle.close()
             try pipe.fileHandleForWriting.close()
         } catch {
-            print("Error closing pipe handler: \(error)")
+            Log.error("Error closing pipe handler: \(error)")
         }
     }
 }

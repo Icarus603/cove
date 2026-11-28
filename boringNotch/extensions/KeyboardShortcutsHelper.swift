@@ -38,7 +38,7 @@ extension KeyboardShortcuts.Shortcut {
         
         let source = TISCopyCurrentKeyboardLayoutInputSource().takeRetainedValue()
         guard let ptr = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
-            NSLog("Could not get keyboard layout data")
+            Log.notice("Could not get keyboard layout data")
             return nil
         }
         let layoutData = Unmanaged<CFData>.fromOpaque(ptr).takeUnretainedValue() as Data
@@ -48,7 +48,7 @@ extension KeyboardShortcuts.Shortcut {
                            &deadKeys, maxNameLength, &nameLength, &nameBuffer)
         }
         guard osStatus == noErr else {
-            NSLog("Code: 0x%04X  Status: %+i", carbonKeyCode, osStatus);
+            Log.notice("Could not translate key code \(carbonKeyCode), status \(osStatus)")
             return nil
         }
         

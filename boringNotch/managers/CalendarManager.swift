@@ -66,7 +66,7 @@ class CalendarManager: ObservableObject {
     func checkCalendarAuthorization() async {
         let status = EKEventStore.authorizationStatus(for: .event)
         DispatchQueue.main.async {
-            print("📅 Current calendar authorization status: \(status)")
+            Log.debug("Current calendar authorization status: \(status)")
             self.calendarAuthorizationStatus = status
         }
 
@@ -85,25 +85,25 @@ class CalendarManager: ObservableObject {
                     calendars: selectedCalendars.map { $0.id })
             }
         case .restricted, .denied:
-            NSLog("Calendar access denied or restricted")
+            Log.notice("Calendar access denied or restricted")
         case .fullAccess:
-            NSLog("Full access")
+            Log.debug("Full access")
             await reloadCalendarAndReminderLists()
             events = await calendarService.events(
                 from: currentWeekStartDate,
                 to: Calendar.current.date(byAdding: .day, value: 1, to: currentWeekStartDate)!,
                 calendars: selectedCalendars.map { $0.id })
         case .writeOnly:
-            NSLog("Write only")
+            Log.debug("Write only")
         @unknown default:
-            print("Unknown authorization status")
+            Log.notice("Unknown authorization status")
         }
     }
     
     func checkReminderAuthorization() async {
         let status = EKEventStore.authorizationStatus(for: .reminder)
         DispatchQueue.main.async {
-            print("📅 Current reminder authorization status: \(status)")
+            Log.debug("Current reminder authorization status: \(status)")
             self.reminderAuthorizationStatus = status
         }
 
@@ -118,14 +118,14 @@ class CalendarManager: ObservableObject {
                 await reloadCalendarAndReminderLists()
             }
         case .restricted, .denied:
-            NSLog("Reminder access denied or restricted")
+            Log.notice("Reminder access denied or restricted")
         case .fullAccess:
-            NSLog("Full access")
+            Log.debug("Full access")
             await reloadCalendarAndReminderLists()
         case .writeOnly:
-            NSLog("Write only")
+            Log.debug("Write only")
         @unknown default:
-            print("Unknown authorization status")
+            Log.notice("Unknown authorization status")
         }
     }
         
