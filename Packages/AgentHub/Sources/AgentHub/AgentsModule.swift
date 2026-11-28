@@ -44,8 +44,7 @@ public final class AgentsModule: NotchModule {
         case .completionCard: return AppState.completionStyle() == .expand ? .needsInput : .active
         default: break
         }
-        if !state.permissionQueue.isEmpty { return wantsPermission ? .needsInput : .active }
-        if !state.questionQueue.isEmpty { return wantsQuestion ? .needsInput : .active }
+        if !state.permissionQueue.isEmpty || !state.questionQueue.isEmpty { return .active }
         return state.sessions.values.contains { $0.status != .idle } ? .active : .none
     }
 

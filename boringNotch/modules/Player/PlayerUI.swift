@@ -47,6 +47,7 @@ final class PlayerUI: ObservableObject {
     @Published var mode: Mode = .library
     @Published var isPoppedOut = false
     @Published var isFullScreen = false
+    @Published var isDropTargeted = false
     /// The controls over a playing video fade away when nothing has happened for a moment. Shared by the notch and the window
     /// so the keyboard can bring them back too.
     @Published var controlsVisible = true
@@ -182,6 +183,7 @@ final class PlayerUI: ObservableObject {
 
     func popOut() {
         guard engine.current?.kind == .video else { return }
+        AppDelegate.current?.closeNotchEverywhere()
         isPoppedOut = true
         mode = .library
         FloatingPlayerController.shared.show()
@@ -274,6 +276,7 @@ final class PlayerUI: ObservableObject {
 
     func reveal(_ item: MediaItem) {
         let url = library.resolveURL(for: item.id) ?? item.url
+        AppDelegate.current?.closeNotchEverywhere()
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 

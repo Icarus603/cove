@@ -84,6 +84,7 @@ struct AlbumArtView: View {
     private var albumArtButton: some View {
         ZStack {
             Button {
+                AppDelegate.current?.closeNotchEverywhere()
                 musicManager.openMusicApp()
             } label: {
                 ZStack(alignment:.bottomTrailing) {

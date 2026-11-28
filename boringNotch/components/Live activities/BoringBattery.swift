@@ -162,6 +162,7 @@ struct BatteryMenuView: View {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.battery") {
             openURL(url)
             onDismiss()
+            AppDelegate.current?.closeNotchEverywhere()
         }
     }
 }

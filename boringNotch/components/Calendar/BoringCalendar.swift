@@ -315,6 +315,7 @@ struct EventListView: View {
                     Button(action: {
                         if let url = event.calendarAppURL() {
                             openURL(url)
+                            AppDelegate.current?.closeNotchEverywhere()
                         }
                     }) {
                         eventRow(event)

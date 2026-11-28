@@ -80,6 +80,7 @@ final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDel
     private var panel: Panel?
     /// For tests, which send key events to the panel directly.
     var debugPanel: NSPanel? { panel }
+    var isEditing: Bool { panel != nil }
     private var field: NSTextField?
     private var onChange: ((String) -> Void)?
     private var onCommit: (() -> Void)?
@@ -196,7 +197,7 @@ final class NotchTextInputController: NSObject, NSTextFieldDelegate, NSWindowDel
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         if selector == #selector(NSResponder.insertNewline(_:)) { end(commit: true); return true }
-        if selector == #selector(NSResponder.cancelOperation(_:)) { onChange?(""); end(commit: false); return true }
+        if selector == #selector(NSResponder.cancelOperation(_:)) { end(commit: false); return true }
         return false
     }
 

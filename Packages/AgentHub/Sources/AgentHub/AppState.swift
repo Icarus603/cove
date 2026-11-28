@@ -1211,6 +1211,80 @@ final class AppState {
     /// Announce a finished turn the way `AttentionPolicy` decided: the card's
     /// ERROR mark (`turnFailed`: a StopFailure, a failed AiWork stream or
     /// Cowork turn), the follow-up, then the completion card or the glance dot.
+    /// Delivers a decision's completion UI, follow-up, and sound, deferring to a tab-level
+    /// Smart Suppress check when the session's host app is currently frontmost.
+    func deliverCompletionAndSound(_ decision: AttentionDecision, sessionId: String) {
+        let wantsTabCheck = shouldSuppressAppLevel(for: sessionId)
+            && (decision.completion != nil || decision.sound != nil)
+        if wantsTabCheck, let session = sessions[sessionId] {
+            if let completion = decision.completion {
+                sessions[sessionId]?.lastTurnFailed = completion.turnFailed
+            }
+            if case .card? = decision.completion?.presentation {
+                if completionQueue.contains(sessionId) || justCompletedSessionId == sessionId { return }
+                if isShowingCompletion || isShowingInteractive || queuedCompletionLookingAtTab != nil {
+                    completionQueue.append(sessionId)
+                    return
+                }
+            }
+            let sessionCopy = session
+            Task.detached {
+                let tabVisible = TerminalVisibilityDetector.isSessionTabVisible(sessionCopy)
+                await MainActor.run { [weak self] in
+                    guard let self, self.sessions[sessionId] != nil else { return }
+                    guard !tabVisible else { return }
+                    if case .trackCompletion(let turnFailed)? = decision.followUp {
+                        self.followUps.trackCompletion(sessionId: sessionId, turnFailed: turnFailed)
+                    }
+                    if case .glance? = decision.completion?.presentation {
+                        self.flashGlanceCompletionIndicator()
+                    } else if case .card? = decision.completion?.presentation {
+                        switch self.surface {
+                        case .approvalCard, .questionCard: break
+                        default:
+                            withAnimation(NotchAnimation.pop) {
+                                self.doShowCompletion(sessionId)
+                            }
+                        }
+                    }
+                    self.playAttentionSound(decision, sessionId: sessionId)
+                }
+            }
+            return
+        }
+
+        announceCompletion(decision, sessionId: sessionId)
+        playAttentionSound(decision, sessionId: sessionId)
+    }
+
+    /// Runs a background tab-level Smart Suppress check when the session's host app is frontmost,
+    /// playing the request sound and promoting the card only if the session's tab/window is not in view.
+    private func deliverPendingRequestAfterTabCheck(
+        sessionId: String,
+        decision: AttentionDecision,
+        isQuestion: Bool,
+        autoExpand: Bool
+    ) {
+        guard let session = sessions[sessionId] else { return }
+        let sessionCopy = session
+        Task.detached {
+            let tabVisible = TerminalVisibilityDetector.isSessionTabVisible(sessionCopy)
+            await MainActor.run { [weak self] in
+                guard let self, !tabVisible else { return }
+                let stillPending = isQuestion
+                    ? (self.pendingQuestion(forSession: sessionId) != nil)
+                    : (self.pendingPermission(forSession: sessionId) != nil)
+                guard stillPending else { return }
+                self.playAttentionSound(decision, sessionId: sessionId)
+                guard autoExpand, !self.isShowingInteractive, self.surface != .sessionList else { return }
+                self.activeSessionId = sessionId
+                withAnimation(NotchAnimation.open) {
+                    self.surface = isQuestion ? .questionCard(sessionId: sessionId) : .approvalCard(sessionId: sessionId)
+                }
+            }
+        }
+    }
+
     func announceCompletion(_ decision: AttentionDecision, sessionId: String) {
         guard let completion = decision.completion else { return }
         // The session card reads ERROR until the next prompt.
@@ -1413,22 +1487,17 @@ final class AppState {
     ) -> Bool {
         guard UserDefaults.standard.bool(forKey: SettingsKey.smartSuppress) else { return true }
         guard let session = sessions[sessionId],
-              (session.termApp != nil || session.termBundleId != nil) else { return true }
+              (session.termApp != nil || session.termBundleId != nil || session.claudeDesktopSessionId != nil) else { return true }
         return !isTerminalFrontmost(session)
     }
 
-    /// Smart Suppress for a question: may its card open by itself, as far as
-    /// "is the user already looking at the agent" goes? The "auto-expand on
-    /// question" switch is a separate, UI-only choice checked where the card
-    /// opens; folded in here, it read as "the user is looking" to anything
-    /// else that asked (the AskUserQuestion push once did).
+    /// Smart Suppress for a question: respects Smart Suppress across terminals and native apps,
+    /// keeping only Pi's blocking non-racing ask dialog exempt from deadlock.
     private func shouldAutoOpenQuestionSurface(for event: HookEvent) -> Bool {
         let source = SessionSnapshot.normalizedSupportedSource(event.rawJSON["_source"] as? String)
         let nativeAskIsRacing = event.rawJSON["_codeisland_native_ask_racing"] as? Bool == true
-        // Marker-enabled OMP explicitly guarantees that its native ask dialog
-        // races CodeIsland. Pi and legacy OMP block here, so hiding their card deadlocks.
         if event.toolName == "AskUserQuestion",
-           (source != "pi" || !nativeAskIsRacing) {
+           source == "pi", !nativeAskIsRacing {
             return true
         }
         return shouldAutoOpenPendingSurface(
@@ -1439,7 +1508,7 @@ final class AppState {
 
     /// Fast app-level suppress check (main-thread safe, no blocking): Smart
     /// Suppress is on and the session's own terminal is in front.
-    private func shouldSuppressAppLevel(for sessionId: String) -> Bool {
+    func shouldSuppressAppLevel(for sessionId: String) -> Bool {
         !shouldAutoOpenPendingSurface(for: sessionId)
     }
 
@@ -1473,7 +1542,7 @@ final class AppState {
         }
     }
 
-    private func doShowCompletion(_ sessionId: String) {
+    func doShowCompletion(_ sessionId: String) {
         activeSessionId = sessionId
         surface = .completionCard(sessionId: sessionId)
         completionHasBeenEntered = false
@@ -1867,11 +1936,10 @@ final class AppState {
                 errorDetail: reduction.facts.turnError?.detail
             )
         }
-        announceCompletion(attention, sessionId: sessionId)
         for effect in reduction.effects {
             executeEffect(effect, sessionId: sessionId)
         }
-        playAttentionSound(attention, sessionId: sessionId)
+        deliverCompletionAndSound(attention, sessionId: sessionId)
 
         if normalizedEventName == "SessionStart" {
             retireGrokSessionsSuperseded(bySessionStartOf: sessionId)
@@ -2195,10 +2263,19 @@ final class AppState {
         // head and applies the session-list / Smart Suppress rules — pointing
         // the card at this session by hand would show the dismissed request's
         // content whenever a dismissed entry still leads the queue.
-        if !approvalCardOnScreen {
-            showNextPending()
+        if shouldSuppressAppLevel(for: sessionId) {
+            deliverPendingRequestAfterTabCheck(
+                sessionId: sessionId,
+                decision: attention,
+                isQuestion: false,
+                autoExpand: Self.autoExpandOnPermission()
+            )
+        } else {
+            if !approvalCardOnScreen {
+                showNextPending()
+            }
+            playAttentionSound(attention, sessionId: sessionId)
         }
-        playAttentionSound(attention, sessionId: sessionId)
         refreshDerivedState()
     }
 
@@ -2616,15 +2693,24 @@ final class AppState {
         let attention = decideAttention(.questionQueued(firstOfBurst: firstOfBurst), sessionId: sessionId)
         pushQuestionQueued(request, sessionId: sessionId, push: attention.push)
 
-        if firstOfBurst {
-            activeSessionId = sessionId
-            if Self.autoExpandOnQuestion(), shouldAutoOpenPendingSurface(for: sessionId) {
-                withAnimation(NotchAnimation.open) {
-                    surface = .questionCard(sessionId: sessionId)
+        if shouldSuppressAppLevel(for: sessionId) {
+            deliverPendingRequestAfterTabCheck(
+                sessionId: sessionId,
+                decision: attention,
+                isQuestion: true,
+                autoExpand: firstOfBurst && Self.autoExpandOnQuestion()
+            )
+        } else {
+            if firstOfBurst {
+                activeSessionId = sessionId
+                if Self.autoExpandOnQuestion(), shouldAutoOpenPendingSurface(for: sessionId) {
+                    withAnimation(NotchAnimation.open) {
+                        surface = .questionCard(sessionId: sessionId)
+                    }
                 }
             }
+            playAttentionSound(attention, sessionId: sessionId)
         }
-        playAttentionSound(attention, sessionId: sessionId)
         refreshDerivedState()
     }
 
@@ -2756,15 +2842,27 @@ final class AppState {
         )
         pushQuestionQueued(request, sessionId: sessionId, push: attention.push)
 
-        if firstOfBurst {
-            activeSessionId = sessionId
-            if Self.autoExpandOnQuestion(), shouldAutoOpenQuestionSurface(for: event) {
-                withAnimation(NotchAnimation.open) {
-                    surface = .questionCard(sessionId: sessionId)
+        let source = SessionSnapshot.normalizedSupportedSource(event.rawJSON["_source"] as? String)
+        let nativeAskIsRacing = event.rawJSON["_codeisland_native_ask_racing"] as? Bool == true
+        let forceAskBypass = (event.toolName == "AskUserQuestion" && source == "pi" && !nativeAskIsRacing)
+        if !forceAskBypass, shouldSuppressAppLevel(for: sessionId) {
+            deliverPendingRequestAfterTabCheck(
+                sessionId: sessionId,
+                decision: attention,
+                isQuestion: true,
+                autoExpand: firstOfBurst && Self.autoExpandOnQuestion()
+            )
+        } else {
+            if firstOfBurst {
+                activeSessionId = sessionId
+                if Self.autoExpandOnQuestion(), shouldAutoOpenQuestionSurface(for: event) {
+                    withAnimation(NotchAnimation.open) {
+                        surface = .questionCard(sessionId: sessionId)
+                    }
                 }
             }
+            playAttentionSound(attention, sessionId: sessionId)
         }
-        playAttentionSound(attention, sessionId: sessionId)
         refreshDerivedState()
     }
 

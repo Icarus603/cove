@@ -45,6 +45,8 @@ class BoringViewModel: NSObject, ObservableObject {
     @Published var edgeAutoOpenActive: Bool = false
     @Published var isHoveringCalendar: Bool = false
     @Published var isBatteryPopoverActive: Bool = false
+    /// Opened intentionally by click or shortcut, so moving the pointer away won't auto-close it.
+    @Published var isPinnedOpen: Bool = false
 
     @Published var screenUUID: String?
 
@@ -209,16 +211,29 @@ class BoringViewModel: NSObject, ObservableObject {
         return false
     }
 
-    func open() {
+    private func isPointerOnClosedAccessoryWing() -> Bool {
+        guard let frame = getScreenFrame(screenUUID) else { return false }
+        let x = NSEvent.mouseLocation.x
+        let halfCore = max(0, closedNotchSize.width / 2 - 12)
+        return abs(x - frame.midX) > halfCore
+    }
+
+    func open(pinned: Bool = false) {
         #if DEBUG
         traceNotch("open")
         #endif
-        // The mascot beside the closed notch is the Agents tab's live activity, like the album art is
-        // Home's: opening the notch from it lands on that tab. An explicit choice (a request that needs
-        // you, a file dragged onto the shelf) has already moved off Home and is left alone.
-        if notchState == .closed, coordinator.currentView == .home, PlayerMiniState.shared.visible, !AppModules.agents.isCompactBarBusy {
+        if pinned {
+            isPinnedOpen = true
+        }
+        // Only jump from Home to Player/Agents when the pointer opens from the accessory wing
+        // (or an agent actively needs input), so hovering the center notch preserves Home.
+        let onWing = isPointerOnClosedAccessoryWing()
+        if notchState == .closed, coordinator.currentView == .home,
+           onWing, PlayerMiniState.shared.visible, !AppModules.agents.isCompactBarBusy
+        {
             coordinator.currentView = NotchViews(id: PlayerModule.moduleID)
         } else if notchState == .closed, coordinator.currentView == .home,
+           (onWing || AppModules.agents.attention == .needsInput),
            AppModules.agentBarShown(
                musicActive: MusicManager.shared.isPlaying || !MusicManager.shared.isPlayerIdle,
                musicLiveActivityEnabled: coordinator.musicLiveActivityEnabled)
@@ -248,17 +263,23 @@ class BoringViewModel: NSObject, ObservableObject {
         if SharingStateManager.shared.preventNotchClose {
             return
         }
-        if notchState == .open { AppModules.notchClosed() }
+        if notchState == .open {
+            AppModules.notchClosed()
+            AppDelegate.current?.resignNotchKeyInput(for: screenUUID)
+        }
         self.notchSize = getClosedNotchSize(screenUUID: self.screenUUID)
         self.closedNotchSize = self.notchSize
         self.notchState = .closed
         self.isBatteryPopoverActive = false
+        self.isPinnedOpen = false
         self.coordinator.sneakPeek.show = false
         self.edgeAutoOpenActive = false
 
         // Set the current view to shelf if it contains files and the user enables openShelfByDefault
         // Otherwise, if the user has not enabled openLastShelfByDefault, set the view to home
-    if !ShelfStateViewModel.shared.isEmpty && Defaults[.openShelfByDefault] {
+        if !AppModules.registry.disabledIDs.contains(NotchViews.shelf.id),
+           !ShelfStateViewModel.shared.isEmpty,
+           Defaults[.openShelfByDefault] {
             coordinator.currentView = .shelf
         } else if !coordinator.openLastTabByDefault {
             coordinator.currentView = .home

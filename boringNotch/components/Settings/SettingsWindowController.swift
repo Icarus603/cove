@@ -13,6 +13,7 @@ import Sparkle
 class SettingsWindowController: NSWindowController {
     static let shared = SettingsWindowController()
     private var updaterController: SPUStandardUpdaterController?
+    private var quitAccessory: NSTitlebarAccessoryViewController?
     
     private init() {
         let window = NSWindow(
@@ -43,7 +44,9 @@ class SettingsWindowController: NSWindowController {
         window.title = ""
         // The title bar is the shared one (see ImmersiveChrome): the window buttons in the standard place, the page's own name
         // drawn by the page.
-        MainActor.assumeIsolated { ImmersiveChrome.configure(window, toolbarIdentifier: "CoveSettingsToolbar") }
+        MainActor.assumeIsolated {
+            ImmersiveChrome.configure(window, toolbarIdentifier: "CoveSettingsToolbar")
+        }
         // Not movable by its background: the sidebar's divider is dragged, and must not take the window with it.
         window.isMovableByWindowBackground = false
         
@@ -71,6 +74,26 @@ class SettingsWindowController: NSWindowController {
         
         // Handle window closing
         window.delegate = self
+        MainActor.assumeIsolated { installQuitAccessory(on: window) }
+    }
+
+    @MainActor
+    private func installQuitAccessory(on window: NSWindow) {
+        if let existing = quitAccessory, window.titlebarAccessoryViewControllers.contains(existing) {
+            return
+        }
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.layoutAttribute = .trailing
+        let pill = ToolbarPillButton(title: "Quit app") {
+            NSApp.terminate(nil)
+        }
+        .padding(.trailing, 12)
+        let hosting = NSHostingView(rootView: pill.coveAccent())
+        let size = hosting.fittingSize
+        hosting.frame = NSRect(origin: .zero, size: NSSize(width: max(size.width, 60), height: ToolbarMetrics.height))
+        accessory.view = hosting
+        window.addTitlebarAccessoryViewController(accessory)
+        quitAccessory = accessory
     }
     
     /// The screen the pointer is on, else the main one.
@@ -99,8 +122,9 @@ class SettingsWindowController: NSWindowController {
     }
 
     func showWindow() {
-        // Set app to regular mode first
+        // Set app to regular mode first, and fold any open notch away so Settings isn't covered.
         AppActivation.windowOpened("settings")
+        MainActor.assumeIsolated { AppDelegate.current?.closeNotchEverywhere() }
 
         // If the window is already up, bring it forward; but one that has ended up off screen is put back first.
         if window?.isVisible == true {
@@ -158,5 +182,4 @@ extension SettingsWindowController: NSWindowDelegate {
     
     func windowDidResignKey(_ notification: Notification) {
     }
-    
 }

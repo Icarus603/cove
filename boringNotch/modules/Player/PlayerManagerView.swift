@@ -37,6 +37,7 @@ final class PlayerManagerWindowController: NSObject, NSWindowDelegate {
             self.window = window
         }
         AppActivation.windowOpened("player-manager")
+        AppDelegate.current?.closeNotchEverywhere()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         NotificationCenter.default.post(name: Self.requestNotification, object: nil)

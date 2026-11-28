@@ -15,6 +15,7 @@ extension KeyboardShortcuts.Name {
     static let increaseBacklight = Self("increaseBacklight", default: .init(.f2, modifiers: [.command]))
     static let toggleSneakPeek = Self("toggleSneakPeek", default: .init(.h, modifiers: [.command, .shift]))
     static let toggleNotchOpen = Self("toggleNotchOpen", default: .init(.i, modifiers: [.command, .shift]))
+    static let quickNote = Self("quickNote")
 
     // Coding agents: unbound until the user records a key.
     static let agentToggle = Self("agentToggle")

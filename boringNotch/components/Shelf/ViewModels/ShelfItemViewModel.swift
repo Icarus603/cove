@@ -447,6 +447,7 @@ final class ShelfItemViewModel: ObservableObject {
                             } else {
                                 try await NSWorkspace.shared.open(allSelectedURLs, withApplicationAt: appURL, configuration: config)
                             }
+                            await MainActor.run { AppDelegate.current?.closeNotchEverywhere() }
                         } catch {
                             print("❌ Failed to open with application: \(error.localizedDescription)")
                         }
@@ -496,6 +497,7 @@ final class ShelfItemViewModel: ObservableObject {
                         await urls.accessSecurityScopedResources { accessibleURLs in
                             NSWorkspace.shared.activateFileViewerSelecting(accessibleURLs)
                         }
+                        AppDelegate.current?.closeNotchEverywhere()
                     }
                 }
 
@@ -570,6 +572,7 @@ final class ShelfItemViewModel: ObservableObject {
                             } else {
                                 // Fallback: reveal the temporary file in Finder
                                 NSWorkspace.shared.activateFileViewerSelecting([zipTempURL])
+                                AppDelegate.current?.closeNotchEverywhere()
                             }
                         }
                     } catch {
@@ -739,6 +742,7 @@ final class ShelfItemViewModel: ObservableObject {
                             } else {
                                 try await NSWorkspace.shared.open([fileURL], withApplicationAt: appURL, configuration: config)
                             }
+                            await MainActor.run { AppDelegate.current?.closeNotchEverywhere() }
                         } catch {
                             print("❌ Failed to open with application: \(error.localizedDescription)")
                         }

@@ -4180,6 +4180,7 @@ func startNotchCardJump(
                 withAnimation(NotchAnimation.close) {
                     appState.surface = .collapsed
                 }
+                AgentRuntime.shared.dismissHost?()
             }
         case .failed:
             guard !Task.isCancelled else { return }
@@ -4803,6 +4804,7 @@ private struct SessionCard: View {
                         withAnimation(NotchAnimation.close) {
                             appState.surface = .collapsed
                         }
+                        AgentRuntime.shared.dismissHost?()
                     default:
                         break
                     }

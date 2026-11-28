@@ -14,6 +14,7 @@ import UniformTypeIdentifiers
 @MainActor
 enum AppActivation {
     private static var open: Set<String> = []
+    static var hasOpenWindows: Bool { !open.isEmpty }
 
     static func windowOpened(_ name: String) {
         open.insert(name)
@@ -58,6 +59,7 @@ final class PhotoWindowController: NSObject, NSWindowDelegate {
             self.window = window
         }
         AppActivation.windowOpened("photos")
+        AppDelegate.current?.closeNotchEverywhere()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         NotificationCenter.default.post(name: Self.requestNotification, object: nil)

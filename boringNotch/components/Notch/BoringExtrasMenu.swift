@@ -45,6 +45,7 @@ struct BoringExtrasMenu : View {
             action: {
                 if let url = URL(string: "https://github.com/TheBoredTeam/boring.notch") {
                     NSWorkspace.shared.open(url)
+                    AppDelegate.current?.closeNotchEverywhere()
                 }
             },
             icon: Image(.github),

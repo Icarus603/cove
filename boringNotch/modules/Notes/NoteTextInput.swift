@@ -21,6 +21,8 @@ final class NoteTextInputController: NSObject, NSTextViewDelegate, NSWindowDeleg
 
     private var panel: Panel?
     private var textView: NSTextView?
+    private var currentNoteID: UUID?
+    private var savedSelections: [UUID: NSRange] = [:]
     private var onChange: ((String) -> Void)?
     private var onEnd: (() -> Void)?
     private var holdsInteraction = false
@@ -30,8 +32,9 @@ final class NoteTextInputController: NSObject, NSTextViewDelegate, NSWindowDeleg
 
     var isEditing: Bool { panel != nil }
 
-    func begin(over rect: NSRect, text: String, onChange: @escaping (String) -> Void, onEnd: @escaping () -> Void, anchor: AnchorBox? = nil) {
+    func begin(over rect: NSRect, noteID: UUID? = nil, text: String, onChange: @escaping (String) -> Void, onEnd: @escaping () -> Void, anchor: AnchorBox? = nil) {
         end()
+        self.currentNoteID = noteID
         self.anchor = anchor
         self.onChange = onChange
         self.onEnd = onEnd
@@ -102,15 +105,27 @@ final class NoteTextInputController: NSObject, NSTextViewDelegate, NSWindowDeleg
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(view)
         installMonitors()
-        view.setSelectedRange(NSRange(location: (view.string as NSString).length, length: 0))
-        view.scrollRangeToVisible(view.selectedRange())
+        let textLength = (view.string as NSString).length
+        let initialRange: NSRange
+        if let noteID, let saved = savedSelections[noteID] {
+            let loc = min(max(saved.location, 0), textLength)
+            let len = min(max(saved.length, 0), textLength - loc)
+            initialRange = NSRange(location: loc, length: len)
+        } else {
+            initialRange = NSRange(location: textLength, length: 0)
+        }
+        view.setSelectedRange(initialRange)
+        view.scrollRangeToVisible(initialRange)
     }
 
     /// Closes the panel, keeping what was written.
     func end() {
         guard let panel else { return }
+        if let noteID = currentNoteID, let textView {
+            savedSelections[noteID] = textView.selectedRange()
+        }
         let endHandler = onEnd
-        self.panel = nil; self.textView = nil; self.onChange = nil; self.onEnd = nil
+        self.panel = nil; self.textView = nil; self.currentNoteID = nil; self.onChange = nil; self.onEnd = nil
         panel.delegate = nil
         panel.orderOut(nil)
         removeMonitors()

@@ -32,14 +32,23 @@ final class MarketsModule: NotchModule {
 
     func makeExpandedView() -> AnyView { AnyView(MarketsView()) }
 
-    /// Prices stream only while the tab is showing.
+    private var deactivateGraceTask: Task<Void, Never>?
+
+    /// Prices stream while the tab is showing, with a brief grace period across quick close/reopen glances.
     func activate() {
+        deactivateGraceTask?.cancel()
+        deactivateGraceTask = nil
         MarketsStore.shared.start()
         MarketDetailStore.shared.resume()
     }
 
     func deactivate() {
-        MarketsStore.shared.stop()
-        MarketDetailStore.shared.pause()
+        deactivateGraceTask?.cancel()
+        deactivateGraceTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(20))
+            guard !Task.isCancelled else { return }
+            MarketsStore.shared.stop()
+            MarketDetailStore.shared.pause()
+        }
     }
 }

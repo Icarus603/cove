@@ -99,15 +99,12 @@ struct SettingsView: View {
             .tint(.effectiveAccent)
     }
 
-    /// The page's name, and on the first page the way to quit. It sits in the title bar's own band, level with the window buttons,
-    /// as the page name did before: the band is not spent twice (once empty, once for a header).
+    /// The page's name. It sits in the title bar's own band, level with the window buttons,
+    /// while the Quit button lives in the window's NSToolbar so AppKit hit-testing always reaches it on every page.
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
             Text(pageTitle).font(.system(size: 17, weight: .bold)).lineLimit(1)
             Spacer()
-            if selectedTab == "General" {
-                ToolbarPillButton(title: "Quit app") { NSApp.terminate(nil) }.fixedSize()
-            }
         }
         .frame(height: ToolbarMetrics.height)
         .padding(.horizontal, 16)
@@ -945,9 +942,13 @@ struct Shelf: View {
     var body: some View {
         Form {
             Section {
-                Defaults.Toggle(key: .boringShelf) {
-                    Text("Enable shelf")
-                }
+                Toggle("Enable shelf", isOn: Binding(
+                    get: { Defaults[.boringShelf] && !AppModules.registry.disabledIDs.contains(NotchViews.shelf.id) },
+                    set: { enabled in
+                        Defaults[.boringShelf] = enabled
+                        AppModules.setEnabled(enabled, id: NotchViews.shelf.id)
+                    }
+                ))
                 Defaults.Toggle(key: .openShelfByDefault) {
                     Text("Open shelf by default if items are present")
                 }
@@ -1707,6 +1708,14 @@ struct Shortcuts: View {
             }
             Section {
                 KeyboardShortcuts.Recorder("Toggle Notch Open:", name: .toggleNotchOpen)
+                KeyboardShortcuts.Recorder("Quick Note:", name: .quickNote)
+            } header: {
+                Text("Notch & Notes")
+            } footer: {
+                Text("When the notch is focused (opened by shortcut or clicked), press Esc to close, ⌘1–⌘7 or ⌘[ / ⌘] to switch tabs, and Space / F / arrow keys to control video.")
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
             }
             Section {
                 KeyboardShortcuts.Recorder("Show Agents:", name: .agentToggle)

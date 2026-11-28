@@ -13,6 +13,7 @@ struct NotesView: View {
     @State private var search = ""
     @State private var confirmingDelete = false
     @State private var editorBox = AnchorBox()
+    @State private var pendingEditNoteID: UUID?
 
     var body: some View {
         Group {
@@ -26,9 +27,28 @@ struct NotesView: View {
             }
         }
         .padding(.horizontal, 4)
-        .onChange(of: store.selectedID) { _, _ in
+        .onAppear {
+            if let quickID = store.pendingQuickNoteID {
+                store.pendingQuickNoteID = nil
+                search = ""
+                confirmingDelete = false
+                pendingEditNoteID = quickID
+                scheduleStartWritingWhenReady(for: quickID)
+            }
+        }
+        .onChange(of: store.selectedID) { _, newID in
             NoteTextInputController.shared.end()
             confirmingDelete = false
+            if newID == pendingEditNoteID {
+                scheduleStartWritingWhenReady(for: newID)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .coveQuickNoteRequested)) { note in
+            search = ""
+            confirmingDelete = false
+            let id = (note.object as? UUID) ?? store.selectedID
+            pendingEditNoteID = id
+            scheduleStartWritingWhenReady(for: id)
         }
     }
 
@@ -161,16 +181,33 @@ struct NotesView: View {
     private func newNote() {
         search = ""
         confirmingDelete = false
-        store.newNote()
-        // Once the editor has been laid out for the new note.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { startWriting() }
+        let note = store.newNote()
+        pendingEditNoteID = note.id
+        scheduleStartWritingWhenReady(for: note.id)
+    }
+
+    private func scheduleStartWritingWhenReady(for id: UUID?, attempt: Int = 0) {
+        guard let id, pendingEditNoteID == id else { return }
+        DispatchQueue.main.async {
+            guard pendingEditNoteID == id, store.selectedID == id else { return }
+            if editorBox.screenRect != nil {
+                pendingEditNoteID = nil
+                startWriting()
+            } else if attempt < 8 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                    scheduleStartWritingWhenReady(for: id, attempt: attempt + 1)
+                }
+            } else {
+                pendingEditNoteID = nil
+            }
+        }
     }
 
     private func startWriting() {
         guard let note = store.selected, let rect = editorBox.screenRect else { return }
         let id = note.id
         NoteTextInputController.shared.begin(
-            over: rect, text: note.text,
+            over: rect, noteID: id, text: note.text,
             onChange: { NotesStore.shared.update(id, text: $0) },
             onEnd: { NotesStore.shared.removeIfEmpty(id); NotesStore.shared.flush() },
             anchor: editorBox)

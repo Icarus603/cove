@@ -147,6 +147,39 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
         claimTimer?.tolerance = 0.1
     }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var acceptsFirstResponder: Bool { viewModel.notchState == .open }
+
+    override func mouseDown(with event: NSEvent) {
+        if viewModel.notchState == .open, let skyWindow = window as? BoringNotchSkyLightWindow {
+            skyWindow.beginKeyInput()
+        }
+        super.mouseDown(with: event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if AppDelegate.current?.handleNotchKeyDown(event) == nil {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if AppDelegate.current?.handleNotchKeyDown(event) == nil {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if let delegate = AppDelegate.current,
+           delegate.isAnyNotchOpen,
+           !NoteTextInputController.shared.isEditing,
+           !NotchTextInputController.shared.isEditing {
+            delegate.closeNotchEverywhere()
+        }
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         claimTimer?.invalidate(); claimTimer = nil
@@ -183,14 +216,36 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
         return zone.convert(zone.bounds, to: nil).contains(sender.draggingLocation)
     }
 
-    private func setTargets(shelf: Bool, airDrop: Bool) {
+    private func setTargets(shelf: Bool, airDrop: Bool, player: Bool = false, photos: Bool = false) {
         if viewModel.dragDetectorTargeting != shelf { viewModel.dragDetectorTargeting = shelf }
         if viewModel.dropZoneTargeting != airDrop { viewModel.dropZoneTargeting = airDrop }
+        if PlayerUI.shared.isDropTargeted != player { PlayerUI.shared.isDropTargeted = player }
+        if PhotoNotchModel.shared.isDropTargeted != photos { PhotoNotchModel.shared.isDropTargeted = photos }
+    }
+
+    private func libraryFileDropRoute(for sender: NSDraggingInfo) -> String? {
+        let currentID = BoringViewCoordinator.shared.currentView.id
+        guard currentID == PlayerModule.moduleID || currentID == "builtin.photos" else { return nil }
+        let hasFiles = sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        return hasFiles ? currentID : nil
     }
 
     private func follow(_ sender: NSDraggingInfo) -> NSDragOperation {
         claimRegistration(throttled: true)
         guard takes(sender) else {
+            setTargets(shelf: false, airDrop: false)
+            return []
+        }
+        if let route = libraryFileDropRoute(for: sender) {
+            setTargets(
+                shelf: false,
+                airDrop: false,
+                player: route == PlayerModule.moduleID,
+                photos: route == "builtin.photos"
+            )
+            return .copy
+        }
+        guard !AppModules.registry.disabledIDs.contains(NotchViews.shelf.id) else {
             setTargets(shelf: false, airDrop: false)
             return []
         }
@@ -215,10 +270,25 @@ final class NotchHostingView<Content: View>: NSHostingView<Content> {
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         guard takes(sender) else { return false }
         let snapshot = NotchDropHandler.snapshot(from: sender.draggingPasteboard)
-        let toAirDrop = overAirDrop(sender)
+        let libraryRoute = libraryFileDropRoute(for: sender)
+        let toAirDrop = libraryRoute == nil && overAirDrop(sender)
+        if libraryRoute == nil && AppModules.registry.disabledIDs.contains(NotchViews.shelf.id) {
+            setTargets(shelf: false, airDrop: false)
+            return false
+        }
         viewModel.dropEvent = true
         setTargets(shelf: false, airDrop: false)
         Task { @MainActor in
+            if libraryRoute == PlayerModule.moduleID {
+                guard !snapshot.fileURLs.isEmpty else { return }
+                await PlayerLibrary.shared.importURLs(snapshot.fileURLs)
+                return
+            }
+            if libraryRoute == "builtin.photos" {
+                guard !snapshot.fileURLs.isEmpty else { return }
+                await PhotoLibrary.shared.importURLs(snapshot.fileURLs)
+                return
+            }
             let providers = await NotchDropHandler.providers(from: snapshot)
             guard !providers.isEmpty else { return }
             if toAirDrop { viewModel.airDropHandler?(providers) } else { ShelfStateViewModel.shared.load(providers) }

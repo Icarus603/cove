@@ -76,6 +76,7 @@ struct CameraPreviewView: View {
 
                 if alert.runModal() == .alertFirstButtonReturn {
                     if let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera") {
+                        AppDelegate.current?.closeNotchEverywhere()
                         NSWorkspace.shared.open(settingsURL)
                     }
                 }

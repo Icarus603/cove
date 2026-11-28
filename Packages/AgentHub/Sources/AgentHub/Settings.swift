@@ -186,7 +186,7 @@ struct SettingsDefaults {
     static let smartSuppress = true
     static let collapseOnMouseLeave = true
     static let notchAnimationSpeed = NotchAnimationSpeed.normal
-    static let autoCollapseAfterSessionJump = false
+    static let autoCollapseAfterSessionJump = true
     static let autoExpandOnPermission = true
     static let autoExpandOnCompletion = true
     static let pluginSessionMode = "separate"

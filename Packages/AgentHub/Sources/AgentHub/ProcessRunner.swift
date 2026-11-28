@@ -15,7 +15,7 @@ enum ProcessRunner {
             return nil
         }
         let tty = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !tty.isEmpty, tty != "?" else { return nil }
+        guard !tty.isEmpty, tty != "?", tty != "??", tty != "not a tty" else { return nil }
         return tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
     }
 

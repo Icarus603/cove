@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CodeIslandCore
 
 /// Detects whether a session's terminal tab/pane is currently the active (visible) one.
@@ -117,6 +118,12 @@ struct TerminalVisibilityDetector {
             return true
         }
 
+        if session.claudeDesktopSessionId != nil,
+           session.termBundleId == nil,
+           frontBundleId == AppState.claudeDesktopBundleId {
+            return true
+        }
+
         if isWarpSession(session) {
             guard frontBundleId == "dev.warp.warp-stable" else { return false }
             return isWarpSessionTabActive(session)
@@ -154,6 +161,13 @@ struct TerminalVisibilityDetector {
         if let harness = session.hostHarness {
             if case .desktopApp = harness.surface { return true }
             return false
+        }
+
+        // Claude Desktop (Cowork / Code tab): if we can read the front window's title,
+        // suppress only when it matches this session or shows a generic/single window.
+        if session.termBundleId?.lowercased() == AppState.claudeDesktopBundleId
+            || session.claudeDesktopSessionId != nil {
+            return isClaudeDesktopSessionVisible(session)
         }
 
         // Native app bundles (Cursor APP, Codex APP): app IS the session, suppress when frontmost
@@ -257,53 +271,103 @@ struct TerminalVisibilityDetector {
     /// as frontmost. Treat a visible matching Ghostty window as "already in view"
     /// so smart-suppress does not pop approval/completion UI over the user's terminal.
     private static func isGhosttySessionVisibleInAnyWindow(_ session: SessionSnapshot) -> Bool {
+        let lowerTerm = session.termApp?.lowercased() ?? ""
         let bid = session.termBundleId?.lowercased() ?? ""
-        let term = session.termApp?.lowercased() ?? ""
-        guard bid.contains("ghostty") || term == "ghostty" || term == "xterm-ghostty" else {
-            return false
-        }
-
-        guard let cwd = session.cwd, !cwd.isEmpty else { return false }
-        let dirName = (cwd as NSString).lastPathComponent
-        let sourceKeyword = session.source
-        var cwdVariants = [cwd]
-        let home = NSHomeDirectory()
-        if cwd == home {
-            cwdVariants.append("~")
-        } else if cwd.hasPrefix(home + "/") {
-            cwdVariants.append("~" + String(cwd.dropFirst(home.count)))
-        }
-
-        guard let windowList = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements],
-            kCGNullWindowID
-        ) as? [[String: Any]] else {
-            return false
-        }
-
-        return windowList.contains { window in
-            guard let owner = window[kCGWindowOwnerName as String] as? String,
-                  owner.lowercased().contains("ghostty"),
-                  let layer = window[kCGWindowLayer as String] as? Int,
-                  layer == 0,
-                  let bounds = window[kCGWindowBounds as String] as? [String: Any],
-                  let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary),
-                  rect.width > 20,
-                  rect.height > 20 else {
-                return false
-            }
-            let title = (window[kCGWindowName as String] as? String ?? "").lowercased()
-            guard !title.isEmpty else { return false }
-            let lowerDir = dirName.lowercased()
-            let lowerSource = sourceKeyword.lowercased()
-            if !lowerSource.isEmpty, !title.contains(lowerSource) {
-                return false
-            }
-            if title.contains(lowerDir) {
+        let isGhostty = bid.contains("ghostty") || lowerTerm == "ghostty" || lowerTerm == "xterm-ghostty"
+        if isGhostty {
+            guard let cwd = session.cwd, !cwd.isEmpty else { return false }
+            let dirName = (cwd as NSString).lastPathComponent
+            let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier?.lowercased() ?? ""
+            if frontBundle == "com.mitchellh.ghostty" {
                 return true
             }
-            return cwdVariants.contains { title.contains($0.lowercased()) }
+            var cwdVariants = [cwd]
+            let home = NSHomeDirectory()
+            if cwd == home {
+                cwdVariants.append("~")
+            } else if cwd.hasPrefix(home + "/") {
+                cwdVariants.append("~" + String(cwd.dropFirst(home.count)))
+            }
+
+            guard let windowList = CGWindowListCopyWindowInfo(
+                [.optionOnScreenOnly, .excludeDesktopElements],
+                kCGNullWindowID
+            ) as? [[String: Any]] else {
+                return false
+            }
+
+            let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            for window in windowList {
+                guard let owner = window[kCGWindowOwnerName as String] as? String,
+                      let layer = window[kCGWindowLayer as String] as? Int,
+                      layer == 0,
+                      let bounds = window[kCGWindowBounds as String] as? [String: Any],
+                      let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+                      rect.width > 20,
+                      rect.height > 20 else {
+                    continue
+                }
+                let ownerPid = window[kCGWindowOwnerPID as String] as? pid_t
+                if owner.lowercased().contains("ghostty") {
+                    let title = (window[kCGWindowName as String] as? String ?? "").lowercased()
+                    guard !title.isEmpty else { continue }
+                    if title.contains(dirName.lowercased())
+                        || cwdVariants.contains(where: { title.contains($0.lowercased()) })
+                        || (session.sessionTitle.map { !$0.isEmpty && title.contains($0.lowercased()) } ?? false) {
+                        return true
+                    }
+                } else if let frontPid, ownerPid == frontPid {
+                    // Buried behind the frontmost application's window.
+                    break
+                }
+            }
+            return false
         }
+        return false
+    }
+
+    // MARK: - Claude Desktop
+
+    private static func isClaudeDesktopSessionVisible(_ session: SessionSnapshot) -> Bool {
+        guard let frontApp = NSWorkspace.shared.frontmostApplication,
+              frontApp.bundleIdentifier?.lowercased() == AppState.claudeDesktopBundleId else {
+            return false
+        }
+        guard let focusedTitle = focusedWindowAttributes(for: frontApp.processIdentifier).title?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !focusedTitle.isEmpty,
+              focusedTitle.caseInsensitiveCompare("Claude") != .orderedSame else {
+            return true
+        }
+        guard let sessionTitle = session.sessionTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sessionTitle.isEmpty else {
+            return true
+        }
+        let lowerWin = focusedTitle.lowercased()
+        let lowerSession = sessionTitle.lowercased()
+        return lowerWin.contains(lowerSession) || lowerSession.contains(lowerWin)
+    }
+
+    private static func focusedWindowAttributes(for pid: pid_t) -> (title: String?, documentPath: String?) {
+        let appElem = AXUIElementCreateApplication(pid)
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElem, kAXFocusedWindowAttribute as CFString, &focusedRef) == .success,
+              let focusedRef else {
+            return (nil, nil)
+        }
+        let win = focusedRef as! AXUIElement
+        var titleRef: CFTypeRef?
+        let title = AXUIElementCopyAttributeValue(win, kAXTitleAttribute as CFString, &titleRef) == .success
+            ? (titleRef as? String)
+            : nil
+        var docRef: CFTypeRef?
+        let docPath: String? = {
+            guard AXUIElementCopyAttributeValue(win, kAXDocumentAttribute as CFString, &docRef) == .success,
+                  let raw = docRef as? String else { return nil }
+            if let url = URL(string: raw), url.isFileURL { return url.path }
+            return raw
+        }()
+        return (title, docPath)
     }
 
     // MARK: - iTerm2
@@ -330,27 +394,108 @@ struct TerminalVisibilityDetector {
 
     // MARK: - Ghostty
 
-    /// Check if Ghostty's front window matches this session's CWD.
-    /// Uses System Events to read the front window title (Ghostty's native scripting
-    /// doesn't expose a "focused terminal" property).
-    private static func isGhosttyTabActive(_ session: SessionSnapshot) -> Bool {
-        guard let cwd = session.cwd, !cwd.isEmpty else { return false }
-        let dirName = escapeAppleScript((cwd as NSString).lastPathComponent)
-        // Also require the session's source keyword in the title to reduce false positives
-        // when multiple CLI tools run in the same project directory
-        let sourceKeyword = escapeAppleScript(session.source)
+    private static func normalizePath(_ path: String) -> String {
+        var p = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        while p.count > 1, p.hasSuffix("/") { p.removeLast() }
+        return URL(fileURLWithPath: p).resolvingSymlinksInPath().path
+    }
+
+    private static func isPid(_ childPid: pid_t, sameOrDescendantOf ancestorPid: pid_t) -> Bool {
+        guard childPid > 0, ancestorPid > 0 else { return false }
+        var current = childPid
+        var visited = Set<pid_t>()
+        for _ in 0..<8 {
+            if current == ancestorPid { return true }
+            guard current > 1, !visited.contains(current) else { break }
+            visited.insert(current)
+            var info = proc_bsdinfo()
+            let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+            guard proc_pidinfo(current, PROC_PIDTBSDINFO, 0, &info, size) == size else { break }
+            let ppid = pid_t(info.pbi_ppid)
+            guard ppid > 0, ppid != current else { break }
+            current = ppid
+        }
+        return false
+    }
+
+    /// Check if Ghostty's focused terminal matches this session by TTY, foreground PID,
+    /// working directory (via Ghostty's native scripting dictionary or AXDocument), or title.
+    static func isGhosttyTabActive(_ session: SessionSnapshot) -> Bool {
+        let inTmux = session.tmuxPane.map { !$0.isEmpty } ?? false
+        let storedTty = session.ttyPath.flatMap { ($0.isEmpty || $0 == "/dev/tty") ? nil : $0 }
+        let effectiveTty: String? = inTmux
+            ? session.tmuxClientTty
+            : (storedTty ?? session.cliPid.flatMap(ProcessRunner.ttyForPid))
+        let normalizedCwd = session.cwd.flatMap { $0.isEmpty ? nil : normalizePath($0) }
+        let dirName = normalizedCwd.map { ($0 as NSString).lastPathComponent.lowercased() }
+        let sessionTitle = session.sessionTitle?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
         let script = """
-        tell application "System Events"
-            tell process "Ghostty"
+        tell application "Ghostty"
+            try
+                if (count of windows) = 0 then return ""
+                set ft to focused terminal of selected tab of front window
+                set tTty to ""
+                set tPid to ""
+                set tWdr to ""
+                set tName to ""
                 try
-                    set winTitle to name of front window
-                    if winTitle contains "\(dirName)" and winTitle contains "\(sourceKeyword)" then return "true"
+                    set tTty to tty of ft
                 end try
-            end tell
+                try
+                    set tPid to (pid of ft as text)
+                end try
+                try
+                    set tWdr to working directory of ft
+                end try
+                try
+                    set tName to name of ft
+                end try
+                return tTty & linefeed & tPid & linefeed & tWdr & linefeed & tName
+            end try
         end tell
-        return "false"
+        return ""
         """
-        return runAppleScriptSync(script)?.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+        if let raw = runAppleScriptSync(script)?
+            .trimmingCharacters(in: .newlines),
+           !raw.isEmpty {
+            let lines = raw.components(separatedBy: .newlines)
+            let termTty = lines.indices.contains(0) ? lines[0].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            let termPid = lines.indices.contains(1) ? Int32(lines[1].trimmingCharacters(in: .whitespacesAndNewlines)) : nil
+            let termWdr = lines.indices.contains(2) ? lines[2].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            let termName = lines.indices.contains(3) ? lines[3].trimmingCharacters(in: .whitespacesAndNewlines).lowercased() : ""
+
+            if let effectiveTty, !effectiveTty.isEmpty, !termTty.isEmpty {
+                return termTty == effectiveTty
+            }
+            if let cliPid = session.cliPid, let termPid, isPid(cliPid, sameOrDescendantOf: termPid) {
+                return true
+            }
+            if let normalizedCwd, !termWdr.isEmpty {
+                let normWdr = normalizePath(termWdr)
+                return normWdr == normalizedCwd || normWdr.hasPrefix(normalizedCwd + "/")
+            }
+            if !termName.isEmpty {
+                if let dirName, !dirName.isEmpty, termName.contains(dirName) { return true }
+                if let sessionTitle, !sessionTitle.isEmpty, termName.contains(sessionTitle) { return true }
+            }
+            return false
+        }
+
+        // Fallback for older Ghostty builds or when AppleEvents are unavailable: check AXDocument & AXTitle.
+        if let frontApp = NSWorkspace.shared.frontmostApplication,
+           frontApp.bundleIdentifier?.lowercased() == "com.mitchellh.ghostty" {
+            let attrs = focusedWindowAttributes(for: frontApp.processIdentifier)
+            if let doc = attrs.documentPath, !doc.isEmpty, let normalizedCwd {
+                let normDoc = normalizePath(doc)
+                return normDoc == normalizedCwd || normDoc.hasPrefix(normalizedCwd + "/")
+            }
+            if let title = attrs.title?.lowercased(), !title.isEmpty {
+                if let dirName, !dirName.isEmpty, title.contains(dirName) { return true }
+                if let sessionTitle, !sessionTitle.isEmpty, title.contains(sessionTitle) { return true }
+            }
+        }
+        return false
     }
 
     // MARK: - Terminal.app

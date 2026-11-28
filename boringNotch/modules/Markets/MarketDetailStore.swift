@@ -69,7 +69,7 @@ final class MarketDetailStore: ObservableObject {
 
     func pause() {
         isRunning = false
-        close()
+        cancelTasks()
     }
 
     /// Try the first load again after it failed.

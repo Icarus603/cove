@@ -108,7 +108,95 @@ class BoringNotchSkyLightWindow: NSPanel {
     }
     
     private var observers: Set<AnyCancellable> = []
-    
-    override var canBecomeKey: Bool { false }
+    private var savedPresentation: NSApplication.PresentationOptions?
+    weak var notchViewModel: BoringViewModel?
+    var allowKeyInput: Bool = false
+
+    override var canBecomeKey: Bool { allowKeyInput }
     override var canBecomeMain: Bool { false }
+
+    override func sendEvent(_ event: NSEvent) {
+        super.sendEvent(event)
+        if event.type == .leftMouseDown,
+           contentView?.acceptsFirstResponder == true {
+            // Clicking inside an automatically popped-up Agent alert must not pin it open.
+            let insideAutoAgentAlert = AppModules.isOpenedForAttention
+                && BoringViewCoordinator.shared.currentView.id == AppModules.agents.id
+            if !insideAutoAgentAlert {
+                notchViewModel?.isPinnedOpen = true
+            }
+            if !isKeyWindow,
+               !NoteTextInputController.shared.isEditing,
+               !NotchTextInputController.shared.isEditing {
+                beginKeyInput()
+            }
+        }
+    }
+
+    func beginKeyInput() {
+        allowKeyInput = true
+        if !NSMenu.menuBarVisible(), savedPresentation == nil {
+            savedPresentation = NSApp.presentationOptions
+            NSApp.presentationOptions = [.hideDock, .hideMenuBar]
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        makeKeyAndOrderFront(nil)
+        if let contentView, firstResponder == nil || firstResponder === self {
+            makeFirstResponder(contentView)
+        }
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if AppDelegate.current?.handleNotchKeyDown(event) == nil {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if AppDelegate.current?.handleNotchKeyDown(event) == nil {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if let delegate = AppDelegate.current,
+           delegate.isAnyNotchOpen,
+           !NoteTextInputController.shared.isEditing,
+           !NotchTextInputController.shared.isEditing {
+            delegate.closeNotchEverywhere()
+        }
+    }
+
+    func endKeyInput(deactivateIfPossible: Bool = true) {
+        allowKeyInput = false
+        if !NoteTextInputController.shared.isEditing,
+           !NotchTextInputController.shared.isEditing,
+           let saved = savedPresentation {
+            NSApp.presentationOptions = saved
+            savedPresentation = nil
+        }
+        if isKeyWindow {
+            resignKey()
+        }
+        if deactivateIfPossible,
+           NSApp.isActive,
+           !AppActivation.hasOpenWindows,
+           !NoteTextInputController.shared.isEditing,
+           !NotchTextInputController.shared.isEditing {
+            NSApp.deactivate()
+        }
+    }
+
+    override func resignKey() {
+        super.resignKey()
+        allowKeyInput = false
+        if !NoteTextInputController.shared.isEditing,
+           !NotchTextInputController.shared.isEditing,
+           let saved = savedPresentation {
+            NSApp.presentationOptions = saved
+            savedPresentation = nil
+        }
+    }
 }

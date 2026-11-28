@@ -16,7 +16,7 @@ struct BoringHeader: View {
     var body: some View {
         HStack(spacing: 0) {
             HStack {
-                if (!tvm.isEmpty || coordinator.alwaysShowTabs) && Defaults[.boringShelf] {
+                if !tvm.isEmpty || coordinator.alwaysShowTabs {
                     TabSelectionView()
                 } else if vm.notchState == .open {
                     EmptyView()
@@ -33,6 +33,12 @@ struct BoringHeader: View {
                     .frame(width: vm.closedNotchSize.width)
                     .mask {
                         NotchShape()
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(vm.animation) {
+                            AppDelegate.current?.closeNotchEverywhere()
+                        }
                     }
             }
 
@@ -88,6 +94,25 @@ struct BoringHeader: View {
                                 timeToFullCharge: batteryModel.timeToFullCharge,
                                 isForNotification: false
                             )
+                        }
+                        if vm.isPinnedOpen {
+                            Button(action: {
+                                withAnimation(vm.animation) {
+                                    AppDelegate.current?.closeNotchEverywhere()
+                                }
+                            }) {
+                                Capsule()
+                                    .fill(.black)
+                                    .frame(width: 30, height: 30)
+                                    .overlay {
+                                        Image(systemName: "chevron.up")
+                                            .foregroundColor(.white)
+                                            .padding()
+                                            .imageScale(.medium)
+                                    }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .help(Text("Collapse notch"))
                         }
                     }
                 }

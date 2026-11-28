@@ -58,8 +58,7 @@ extension AppState {
         if let push = decision.push {
             pushTurnEnded(push, sessionId: sessionId, errorDetail: errorDetail)
         }
-        announceCompletion(decision, sessionId: sessionId)
-        playAttentionSound(decision, sessionId: sessionId)
+        deliverCompletionAndSound(decision, sessionId: sessionId)
         return decision
     }
 

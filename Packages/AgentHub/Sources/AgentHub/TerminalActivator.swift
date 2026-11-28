@@ -314,11 +314,12 @@ struct TerminalActivator {
         // When tmux is detached (no client TTY), set effectiveTty to nil so terminal-specific
         // handlers skip useless TTY matching and fall back to CWD or app-level activation.
         let inTmux = session.tmuxPane != nil && !(session.tmuxPane ?? "").isEmpty
+        let storedTty = session.ttyPath.flatMap { ($0.isEmpty || $0 == "/dev/tty") ? nil : $0 }
         let effectiveTty: String?
         if inTmux {
             effectiveTty = session.tmuxClientTty  // nil when detached — intentional
         } else {
-            effectiveTty = session.ttyPath
+            effectiveTty = storedTty
         }
 
         // --- cmux: surface-level precise jump (workspace + surface) ---
@@ -347,6 +348,7 @@ struct TerminalActivator {
             activateGhostty(
                 cwd: session.cwd,
                 tty: effectiveTty,
+                cliPid: inTmux ? nil : session.cliPid,
                 sessionId: sessionId,
                 source: session.source,
                 tmuxPane: session.tmuxPane,
@@ -451,17 +453,37 @@ struct TerminalActivator {
         return pid_t(info.pbi_ppid)
     }
 
-    // MARK: - Ghostty (AppleScript: match by CWD + session ID in title)
+    static func ancestorPids(of pid: pid_t?, limit: Int = 8) -> [pid_t] {
+        guard let pid, pid > 1 else { return [] }
+        var result: [pid_t] = []
+        var seen = Set<pid_t>()
+        var current = pid
+        for _ in 0..<limit {
+            guard current > 1, !seen.contains(current) else { break }
+            seen.insert(current)
+            result.append(current)
+            guard let ppid = parentPID(of: current), ppid > 1 else { break }
+            current = ppid
+        }
+        return result
+    }
+
+    // MARK: - Ghostty (AppleScript: match by tmux, TTY, PID, CWD, or title)
 
     private static func activateGhostty(
         cwd: String?,
         tty: String? = nil,
+        cliPid: pid_t? = nil,
         sessionId: String? = nil,
         source: String = "claude",
         tmuxPane: String? = nil,
         tmuxEnv: String? = nil
     ) {
-        guard let cwd = cwd, !cwd.isEmpty else { bringToFront("Ghostty"); return }
+        let hasCwd = cwd.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        let hasTty = tty.map { !$0.isEmpty && $0 != "/dev/tty" } ?? false
+        let hasPid = cliPid.map { $0 > 1 } ?? false
+        let hasTmux = tmuxPane.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        guard hasCwd || hasTty || hasPid || hasTmux else { bringToFront("Ghostty"); return }
         // Ensure app is running, unhidden, and brought to front (Space switching)
         guard let app = NSWorkspace.shared.runningApplications.first(where: {
             $0.bundleIdentifier == "com.mitchellh.ghostty"
@@ -471,59 +493,78 @@ struct TerminalActivator {
         }
         if app.isHidden { app.unhide() }
         // Don't call app.activate() here — it triggers Ghostty's quick terminal.
-        // The AppleScript's `focus t; activate` below will activate after focusing
-        // the correct terminal window.
+        // The AppleScript's `select tab` / `focus` / `activate` below will activate
+        // after focusing the correct terminal tab and window.
 
-        // The remaining work (tmux key resolution + AppleScript construction +
-        // osascript dispatch) is the last subprocess-bound path that wasn't
-        // already off-main — match the rest of the activator and run it on a
-        // userInitiated background queue so a stuck `tmux display-message`
-        // can't freeze the UI. See #139.
         let scriptRunner = AppleScriptRunner.current
         DispatchQueue.global(qos: .userInitiated).async {
-        // Resolve tmux title prefix (most reliable for tmux sessions in Ghostty).
-        // Example Ghostty title often contains: "<session>:<winIdx>:<winName> - ..."
-        var tmuxKey = ""
-        var tmuxSession = ""
-        if let pane = tmuxPane?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !pane.isEmpty,
-           let tmuxBin = findBinary("tmux") {
-            // Try full key first, fall back to session name only
-            let formats = [
-                "#{session_name}:#{window_index}:#{window_name}",
-                "#{session_name}",
-            ]
-            for fmt in formats {
-                if let data = runProcess(tmuxBin, args: ["display-message", "-p", "-t", pane, "-F", fmt], env: tmuxProcessEnv(tmuxEnv)),
-                   let result = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !result.isEmpty {
-                    if fmt.contains("window_index") {
-                        tmuxKey = result
-                        if let first = result.split(separator: ":").first { tmuxSession = String(first) }
-                    } else {
-                        tmuxSession = result
+            // Resolve generic / missing TTY off-main via cliPid (`ps -o tty=`).
+            let cleanedTty = tty.flatMap { ($0.isEmpty || $0 == "/dev/tty") ? nil : $0 }
+            let resolvedTty = cleanedTty ?? cliPid.flatMap(ProcessRunner.ttyForPid)
+            let candidatePids = ancestorPids(of: cliPid)
+
+            // Resolve tmux title prefix (most reliable for tmux sessions in Ghostty).
+            var tmuxKey = ""
+            var tmuxSession = ""
+            if let pane = tmuxPane?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !pane.isEmpty,
+               let tmuxBin = findBinary("tmux") {
+                let formats = [
+                    "#{session_name}:#{window_index}:#{window_name}",
+                    "#{session_name}",
+                ]
+                for fmt in formats {
+                    if let data = runProcess(tmuxBin, args: ["display-message", "-p", "-t", pane, "-F", fmt], env: tmuxProcessEnv(tmuxEnv)),
+                       let result = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !result.isEmpty {
+                        if fmt.contains("window_index") {
+                            tmuxKey = result
+                            if let first = result.split(separator: ":").first { tmuxSession = String(first) }
+                        } else {
+                            tmuxSession = result
+                        }
+                        break
                     }
-                    break
                 }
             }
-        }
 
-        // Normalize CWD variants:
-        // - trim whitespace
-        // - strip trailing slashes (except "/")
-        // - include symlink-resolved path variant
+            let script = buildGhosttyActivationScript(
+                cwd: cwd,
+                resolvedTty: resolvedTty,
+                candidatePids: candidatePids,
+                sessionId: sessionId,
+                source: source,
+                tmuxKey: tmuxKey,
+                tmuxSession: tmuxSession
+            )
+            // Out of process like every other activation script (see AppleScriptRunner).
+            // Already on a background queue, so launch directly.
+            scriptRunner.launch(script)
+        } // end DispatchQueue.global async
+    }
+
+    static func buildGhosttyActivationScript(
+        cwd: String?,
+        resolvedTty: String?,
+        candidatePids: [pid_t],
+        sessionId: String?,
+        source: String,
+        tmuxKey: String,
+        tmuxSession: String
+    ) -> String {
         func stripTrailingSlashes(_ path: String) -> String {
             var p = path
             while p.count > 1, p.hasSuffix("/") { p.removeLast() }
             return p
         }
-        let trimmedCwd = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cwd1 = stripTrailingSlashes(trimmedCwd)
-        let cwd2 = stripTrailingSlashes(URL(fileURLWithPath: cwd1).resolvingSymlinksInPath().path)
-        let dirName = (cwd1 as NSString).lastPathComponent
+        let trimmedCwd = (cwd ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let cwd1 = trimmedCwd.isEmpty ? "" : stripTrailingSlashes(trimmedCwd)
+        let cwd2 = cwd1.isEmpty ? "" : stripTrailingSlashes(URL(fileURLWithPath: cwd1).resolvingSymlinksInPath().path)
+        let dirName = cwd1.isEmpty ? "" : (cwd1 as NSString).lastPathComponent
 
         let home = NSHomeDirectory()
         let tildeCwd: String = {
+            guard !cwd1.isEmpty else { return "" }
             if cwd1 == home { return "~" }
             if cwd1.hasPrefix(home + "/") {
                 return "~" + String(cwd1.dropFirst(home.count))
@@ -537,130 +578,142 @@ struct TerminalActivator {
         let escapedTilde = escapeAppleScript(tildeCwd)
         let escapedTmux = escapeAppleScript(tmuxKey)
         let escapedTmuxSession = escapeAppleScript(tmuxSession)
-
-        // Match order:
-        // 1) tmux title prefix (when available)
-        // 2) session ID in title (disambiguates same-CWD sessions)
-        // 3) source keyword in title ("claude"/"codex"/...)
-        // 4) CWD match (working directory), then title-based fallback
-        let idFilter: String
-        if let sid = sessionId, !sid.isEmpty {
-            let escapedSid = escapeAppleScript(String(sid.prefix(8)))
-            idFilter = """
-                repeat with t in matches
-                    if name of t contains "\(escapedSid)" then
-                        focus t
-                        activate
-                        return
-                    end if
-                end repeat
-            """
-        } else {
-            idFilter = ""
-        }
+        let escapedTty = escapeAppleScript(resolvedTty ?? "")
+        let pidListLiteral = "{" + candidatePids.map(String.init).joined(separator: ", ") + "}"
+        let sidPrefix = sessionId.flatMap { $0.isEmpty ? nil : escapeAppleScript(String($0.prefix(8))) } ?? ""
         let keyword = escapeAppleScript(source)
-        let script = """
-        tell application "Ghostty"
-            set allTerms to terminals
 
-            -- 1) tmux: match by tmux title prefix first (more robust than CWD in tmux)
+        return """
+        tell application "Ghostty"
+            set targetWin to missing value
+            set targetTab to missing value
+            set targetTerm to missing value
+
             set tmuxKey to "\(escapedTmux)"
             set tmuxSession to "\(escapedTmuxSession)"
-
-            -- 1a) exact window key when available: "<session>:<winIdx>:<winName>"
-            if tmuxKey is not "" then
-                repeat with t in allTerms
-                    try
-                        if name of t contains tmuxKey then
-                            focus t
-                            activate
-                            return
-                        end if
-                    end try
-                end repeat
-            end if
-
-            -- 1b) tmuxcc-style fallback: title starts with "<session>:"
-            if tmuxSession is not "" then
-                repeat with t in allTerms
-                    try
-                        set tname to (name of t as text)
-                        if tname starts with (tmuxSession & ":") then
-                            focus t
-                            activate
-                            return
-                        end if
-                    end try
-                end repeat
-            end if
-
-            -- 2) TTY: Ghostty does not currently expose a `tty` property (only uuid,
-            -- title, working directory). This block is kept for future-proofing and
-            -- silently skips via try if the property doesn't exist.
-            \(tty.map { t in
-                let escaped = escapeAppleScript(t)
-                return """
-                if "\(escaped)" is not "" then
-                    try
-                        set ttyMatches to (every terminal whose tty is "\(escaped)")
-                        if (count of ttyMatches) > 0 then
-                            focus (item 1 of ttyMatches)
-                            activate
-                            return
-                        end if
-                    end try
-                end if
-                """
-            } ?? "")
-
-            -- 3) CWD: exact match on Ghostty's working directory property
-            set matches to {}
+            set targetTty to "\(escapedTty)"
+            set candidatePids to \(pidListLiteral)
             set cwd1 to "\(escapedCwd1)"
             set cwd2 to "\(escapedCwd2)"
-            if cwd1 is not "" then
-                try
-                    set matches to (every terminal whose working directory is cwd1)
-                end try
-            end if
-            if (count of matches) = 0 and cwd2 is not "" and cwd2 is not cwd1 then
-                try
-                    set matches to (every terminal whose working directory is cwd2)
-                end try
-            end if
+            set dirName to "\(escapedDir)"
+            set tildeCwd to "\(escapedTilde)"
+            set sidPrefix to "\(sidPrefix)"
+            set sourceKeyword to "\(keyword)"
 
-            -- 4) Fallback: match by title when Ghostty can't report the true working directory (common in tmux)
-            if (count of matches) = 0 then
-                set dirName to "\(escapedDir)"
-                set tildeCwd to "\(escapedTilde)"
-                repeat with t in allTerms
-                    try
-                        set tname to (name of t as text)
-                        if (tildeCwd is not "" and tname contains tildeCwd) or (cwd1 is not "" and tname contains cwd1) or (dirName is not "" and tname contains dirName) then
-                            set end of matches to t
+            set cwdMatches to {}
+            set titleMatches to {}
+
+            repeat with w in windows
+                repeat with tb in tabs of w
+                    repeat with t in terminals of tb
+                        set tName to ""
+                        set tTty to ""
+                        set tPid to 0
+                        set tWdr to ""
+                        try
+                            set tName to (name of t as text)
+                        end try
+                        try
+                            set tTty to (tty of t as text)
+                        end try
+                        try
+                            set tPid to (pid of t as integer)
+                        end try
+                        try
+                            set tWdr to (working directory of t as text)
+                        end try
+
+                        -- 1a) exact tmux window key
+                        if targetTerm is missing value and tmuxKey is not "" and tName contains tmuxKey then
+                            set targetWin to w
+                            set targetTab to tb
+                            set targetTerm to t
+                            exit repeat
                         end if
-                    end try
+
+                        -- 1b) tmuxcc-style prefix
+                        if targetTerm is missing value and tmuxSession is not "" and tName starts with (tmuxSession & ":") then
+                            set targetWin to w
+                            set targetTab to tb
+                            set targetTerm to t
+                            exit repeat
+                        end if
+
+                        -- 2) Exact TTY match (unique per terminal surface)
+                        if targetTerm is missing value and targetTty is not "" and tTty is targetTty then
+                            set targetWin to w
+                            set targetTab to tb
+                            set targetTerm to t
+                            exit repeat
+                        end if
+
+                        -- 3) Foreground shell PID matches cliPid or its ancestor chain
+                        if targetTerm is missing value and (count of candidatePids) > 0 and tPid > 0 and candidatePids contains tPid then
+                            set targetWin to w
+                            set targetTab to tb
+                            set targetTerm to t
+                            exit repeat
+                        end if
+
+                        -- 4) Collect CWD and title candidates for fallback
+                        if (cwd1 is not "" and tWdr is cwd1) or (cwd2 is not "" and tWdr is cwd2) then
+                            set end of cwdMatches to {w, tb, t, tName}
+                        else if (tildeCwd is not "" and tName contains tildeCwd) or (cwd1 is not "" and tName contains cwd1) or (dirName is not "" and tName contains dirName) then
+                            set end of titleMatches to {w, tb, t, tName}
+                        end if
+                    end repeat
+                    if targetTerm is not missing value then exit repeat
                 end repeat
+                if targetTerm is not missing value then exit repeat
+            end repeat
+
+            -- Disambiguate CWD/title fallback matches by session ID, then source keyword
+            if targetTerm is missing value then
+                set fallbackPool to cwdMatches
+                if (count of fallbackPool) = 0 then set fallbackPool to titleMatches
+                if sidPrefix is not "" then
+                    repeat with entry in fallbackPool
+                        if (item 4 of entry) contains sidPrefix then
+                            set targetWin to item 1 of entry
+                            set targetTab to item 2 of entry
+                            set targetTerm to item 3 of entry
+                            exit repeat
+                        end if
+                    end repeat
+                end if
+                if targetTerm is missing value and sourceKeyword is not "" then
+                    repeat with entry in fallbackPool
+                        if (item 4 of entry) contains sourceKeyword then
+                            set targetWin to item 1 of entry
+                            set targetTab to item 2 of entry
+                            set targetTerm to item 3 of entry
+                            exit repeat
+                        end if
+                    end repeat
+                end if
+                if targetTerm is missing value and (count of fallbackPool) > 0 then
+                    set entry to item 1 of fallbackPool
+                    set targetWin to item 1 of entry
+                    set targetTab to item 2 of entry
+                    set targetTerm to item 3 of entry
+                end if
             end if
 
-            \(idFilter)
-            repeat with t in matches
-                if name of t contains "\(keyword)" then
-                    focus t
-                    activate
-                    return
-                end if
-            end repeat
-            if (count of matches) > 0 then
-                focus (item 1 of matches)
+            if targetTerm is not missing value then
+                try
+                    select tab targetTab
+                end try
+                try
+                    focus targetTerm
+                end try
+                try
+                    activate window targetWin
+                end try
             end if
             activate
         end tell
 
-        -- Final fallback via System Events: Ghostty's own `focus`/`activate` is unreliable
-        -- in some versions (issue #84), and even when it brings the app to front it doesn't
-        -- deminiaturize a window that's currently minimized to the dock. System Events
-        -- Accessibility API forces both. Wrapped in `try` so it silently no-ops if the
-        -- user hasn't granted Accessibility permission.
+        -- Final fallback via System Events: deminiaturize and raise frontmost
         try
             tell application "System Events"
                 tell process "Ghostty"
@@ -676,11 +729,6 @@ struct TerminalActivator {
             end tell
         end try
         """
-        // Out of process like every other activation script (see AppleScriptRunner).
-        // Already on a background queue (see DispatchQueue.global wrap above), so
-        // launch directly instead of paying runAppleScript's extra dispatch hop.
-        scriptRunner.launch(script)
-        } // end DispatchQueue.global async
     }
 
     // MARK: - iTerm2 (AppleScript: match by session ID, tty, or cwd)

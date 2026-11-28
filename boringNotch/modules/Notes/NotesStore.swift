@@ -42,6 +42,7 @@ final class NotesStore: ObservableObject {
     @Published var selectedID: UUID? {
         didSet { UserDefaults.standard.set(selectedID?.uuidString, forKey: Self.selectedKey) }
     }
+    var pendingQuickNoteID: UUID?
 
     let fileURL: URL
     private let writeQueue = DispatchQueue(label: "cove.notes.write", qos: .utility)

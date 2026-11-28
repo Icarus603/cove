@@ -27,8 +27,9 @@ public final class AgentRuntime: ObservableObject {
     @Published public private(set) var hooksEnabled: Bool
     @Published public private(set) var started = false
 
-    /// The host sets these so shortcuts can bring the notch up.
+    /// The host sets these so shortcuts can bring the notch up or fold it away.
     public var presentHost: (() -> Void)?
+    public var dismissHost: (() -> Void)?
     public var isHostOnScreen: () -> Bool = { true }
 
     private var hookServer: HookServer?
@@ -261,7 +262,11 @@ public final class AgentRuntime: ObservableObject {
     public func perform(_ shortcut: Shortcut) {
         switch shortcut {
         case .togglePanel:
-            if appState.togglePanelFromShortcut(islandAway: !isHostOnScreen()) != .collapsed { presentHost?() }
+            if appState.togglePanelFromShortcut(islandAway: !isHostOnScreen()) == .collapsed {
+                dismissHost?()
+            } else {
+                presentHost?()
+            }
         case .approve:
             card(.approve)
         case .approveAlways:

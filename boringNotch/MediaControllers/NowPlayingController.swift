@@ -330,7 +330,17 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         )
         
         newPlaybackState.volume = payload.volume ?? (diff ? self.playbackState.volume : 0.5)
-        
+
+        if let ownBundleId = Bundle.main.bundleIdentifier,
+           newPlaybackState.bundleIdentifier.caseInsensitiveCompare(ownBundleId) == .orderedSame {
+            if self.playbackState.isPlaying {
+                var cleared = self.playbackState
+                cleared.isPlaying = false
+                self.playbackState = cleared
+            }
+            return
+        }
+
         self.playbackState = newPlaybackState
         
         // Fetch favorite state for supported apps asynchronously

@@ -9,6 +9,7 @@ import AVFoundation
 import Combine
 import Defaults
 import KeyboardShortcuts
+import NotchKit
 import Sparkle
 import SwiftUI
 
@@ -73,7 +74,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var quickShareService = QuickShareService.shared
     var whatsNewWindow: NSWindow?
     var timer: Timer?
-    var closeNotchTask: Task<Void, Never>?
     private var previousScreens: [NSScreen]?
     private var onboardingWindowController: NSWindowController?
     /// While the first-run setup is on screen the notch stays out of the way: nothing is created or shown until it is done.
@@ -83,24 +83,184 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var isScreenLocked: Bool = false
     private var windowScreenDidChangeObserver: Any?
     private var dragDetectors: [String: DragDetector] = [:] // UUID -> DragDetector
+    private var keyMonitor: Any?
+    private var outsideClickMonitor: Any?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
     }
 
     /// Opens the notch on every screen it is shown on, for requests that need the user (approvals).
-    func openNotchEverywhere() {
+    func openNotchEverywhere(pinned: Bool = false) {
         if onboardingActive { return }
         if Defaults[.showOnAllDisplays] {
-            viewModels.values.forEach { $0.open() }
+            viewModels.values.forEach { $0.open(pinned: pinned) }
         } else {
-            vm.open()
+            vm.open(pinned: pinned)
         }
     }
 
     func closeNotchEverywhere() {
         vm.close()
         viewModels.values.forEach { $0.close() }
+        resignAllNotchKeyInputs()
+    }
+
+    private func targetScreenContext() -> (viewModel: BoringViewModel, window: NSWindow?) {
+        let mouseLocation = NSEvent.mouseLocation
+        if Defaults[.showOnAllDisplays] {
+            for screen in NSScreen.screens where screen.frame.contains(mouseLocation) {
+                if let uuid = screen.displayUUID, let screenViewModel = viewModels[uuid] {
+                    return (screenViewModel, windows[uuid])
+                }
+            }
+        }
+        return (vm, window)
+    }
+
+    private func notchWindow(forScreenUUID uuid: String?) -> BoringNotchSkyLightWindow? {
+        if Defaults[.showOnAllDisplays], let uuid, let win = windows[uuid] as? BoringNotchSkyLightWindow {
+            return win
+        }
+        return window as? BoringNotchSkyLightWindow
+    }
+
+    func focusNotchWindowForKeyboard(screenUUID: String? = nil) {
+        guard let skyWindow = notchWindow(forScreenUUID: screenUUID) ?? (window as? BoringNotchSkyLightWindow) else { return }
+        skyWindow.beginKeyInput()
+    }
+
+    func resignNotchKeyInput(for screenUUID: String?) {
+        notchWindow(forScreenUUID: screenUUID)?.endKeyInput()
+    }
+
+    func resignAllNotchKeyInputs() {
+        (window as? BoringNotchSkyLightWindow)?.endKeyInput()
+        for win in windows.values {
+            (win as? BoringNotchSkyLightWindow)?.endKeyInput()
+        }
+    }
+
+    @MainActor
+    func openNotchForQuickNote() {
+        guard !onboardingActive else { return }
+        if AppModules.registry.disabledIDs.contains(NotesModule.moduleID) {
+            AppModules.setEnabled(true, id: NotesModule.moduleID)
+        }
+        coordinator.currentView = NotchViews(id: NotesModule.moduleID)
+        let target = targetScreenContext()
+        target.viewModel.open(pinned: true)
+        focusNotchWindowForKeyboard(screenUUID: target.viewModel.screenUUID)
+        let note = NotesStore.shared.newNote()
+        NotesStore.shared.pendingQuickNoteID = note.id
+        NotificationCenter.default.post(name: .coveQuickNoteRequested, object: note.id)
+    }
+
+    private func installNotchKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            MainActor.assumeIsolated {
+                guard let self else { return event }
+                return self.handleNotchKeyDown(event)
+            }
+        }
+    }
+
+    @MainActor
+    func handleNotchKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard isAnyNotchOpen,
+              NSApp.keyWindow is BoringNotchSkyLightWindow,
+              !NoteTextInputController.shared.isEditing,
+              !NotchTextInputController.shared.isEditing else {
+            return event
+        }
+        let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
+
+        // Esc closes the open notch (unless FloatingPlayer is in full screen).
+        if mods.isEmpty, event.keyCode == 53 {
+            if PlayerUI.shared.isFullScreen { return event }
+            closeNotchEverywhere()
+            return nil
+        }
+
+        // ⌘1–⌘9 / ⌘[ / ⌘] switch visible tabs.
+        if mods == .command, let chars = event.charactersIgnoringModifiers {
+            let modules = AppModules.registry.visibleModules
+            if let digit = Int(chars), (1...9).contains(digit), modules.indices.contains(digit - 1) {
+                withAnimation(.smooth) {
+                    coordinator.currentView = NotchViews(id: modules[digit - 1].id)
+                }
+                return nil
+            }
+            if chars == "[" || chars == "]", !modules.isEmpty {
+                let currentIdx = modules.firstIndex { $0.id == coordinator.currentView.id } ?? 0
+                let delta = chars == "[" ? -1 : 1
+                let nextIdx = (currentIdx + delta + modules.count) % modules.count
+                withAnimation(.smooth) {
+                    coordinator.currentView = NotchViews(id: modules[nextIdx].id)
+                }
+                return nil
+            }
+        }
+
+        // In-notch Player controls (audio & video, playing or paused) matching FloatingPlayerView.
+        let engine = PlayerEngine.shared
+        let ui = PlayerUI.shared
+        if coordinator.currentView.id == PlayerModule.moduleID, mods.isEmpty {
+            let showingVideo = ui.mode == .video
+                && engine.current?.kind == .video
+                && !ui.isPoppedOut
+                && engine.state != .stopped
+            let chars = event.charactersIgnoringModifiers?.lowercased()
+            switch event.keyCode {
+            case 49:
+                guard !event.isARepeat else { return nil }
+                if engine.current != nil || !engine.queueOrder.isEmpty {
+                    engine.togglePlayPause()
+                } else if let first = ui.visibleItems.first {
+                    ui.play(first, in: ui.visibleItems)
+                }
+                ui.pokeControls()
+                return nil
+            case 123:
+                if engine.current != nil { engine.skip(by: -5); ui.pokeControls(); return nil }
+            case 124:
+                if engine.current != nil { engine.skip(by: 5); ui.pokeControls(); return nil }
+            case 126:
+                engine.isMuted = false
+                engine.volume = min(engine.volume + 0.05, 1)
+                ui.pokeControls()
+                return nil
+            case 125:
+                engine.volume = max(engine.volume - 0.05, 0)
+                ui.pokeControls()
+                return nil
+            default: break
+            }
+            switch chars {
+            case "m":
+                guard !event.isARepeat else { return nil }
+                engine.isMuted.toggle(); ui.pokeControls(); return nil
+            case "f":
+                guard !event.isARepeat else { return nil }
+                if showingVideo {
+                    ui.toggleFullScreen(); return nil
+                } else if engine.current?.kind == .video && !ui.isPoppedOut && engine.state != .stopped {
+                    ui.mode = .video; ui.pokeControls(); return nil
+                }
+            case "n":
+                if engine.current != nil || !engine.queueOrder.isEmpty {
+                    engine.next(); ui.pokeControls(); return nil
+                }
+            case "p":
+                if engine.current != nil || !engine.queueOrder.isEmpty {
+                    engine.previous(); ui.pokeControls(); return nil
+                }
+            default: break
+            }
+        }
+
+        return event
     }
 
     /// The pointer is over the notch window, so closing it would be rude.
@@ -123,6 +283,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let observer = screenUnlockedObserver {
             DistributedNotificationCenter.default().removeObserver(observer)
             screenUnlockedObserver = nil
+        }
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+            self.keyMonitor = nil
+        }
+        if let outsideClickMonitor {
+            NSEvent.removeMonitor(outsideClickMonitor)
+            self.outsideClickMonitor = nil
         }
         MusicManager.shared.destroy()
         cleanupDragDetectors()
@@ -263,13 +431,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleDragEntersNotchRegion(onScreen screen: NSScreen) {
         guard let uuid = screen.displayUUID else { return }
-        
+        guard !AppModules.registry.disabledIDs.contains(NotchViews.shelf.id) else { return }
+
         if Defaults[.showOnAllDisplays], let viewModel = viewModels[uuid] {
+            guard viewModel.notchState == .closed else { return }
+            coordinator.currentView = .shelf
             viewModel.open()
-            coordinator.currentView = .shelf
         } else if !Defaults[.showOnAllDisplays], let windowScreen = window?.screen, screen == windowScreen {
-            vm.open()
+            guard vm.notchState == .closed else { return }
             coordinator.currentView = .shelf
+            vm.open()
         }
     }
 
@@ -278,6 +449,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow]
         
         let window = BoringNotchSkyLightWindow(contentRect: rect, styleMask: styleMask, backing: .buffered, defer: false)
+        window.notchViewModel = viewModel
         
         // Enable SkyLight only when screen is locked
         if isScreenLocked {
@@ -327,11 +499,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.alphaValue = 1
     }
 
+    private func installOutsideClickMonitor() {
+        guard outsideClickMonitor == nil else { return }
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.handleOutsideMouseClick()
+            }
+        }
+    }
+
+    @MainActor
+    private func handleOutsideMouseClick() {
+        guard isAnyNotchOpen,
+              !SharingStateManager.shared.preventNotchClose,
+              !NoteTextInputController.shared.isEditing,
+              !NotchTextInputController.shared.isEditing else {
+            return
+        }
+        let openVMs = ([vm] + Array(viewModels.values)).filter { $0.notchState == .open }
+        guard openVMs.contains(where: { $0.isPinnedOpen }),
+              !openVMs.contains(where: { $0.isMouseHovering() || $0.anyDropZoneTargeting || $0.isBatteryPopoverActive }) else {
+            return
+        }
+        closeNotchEverywhere()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.current = self
         AccentSelection.install()
         // Agents must be listening for hooks from launch, not from the first time the notch opens.
         AppModules.bootstrap()
+        installNotchKeyMonitor()
+        installOutsideClickMonitor()
         #if DEBUG
         UISnapshot.runIfRequested()
         #endif
@@ -421,46 +620,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         KeyboardShortcuts.onKeyDown(for: .toggleNotchOpen) { [weak self] in
-            Task { [weak self] in
-                guard let self = self else { return }
-
-                let mouseLocation = NSEvent.mouseLocation
-
-                var viewModel = self.vm
-
-                if Defaults[.showOnAllDisplays] {
-                    for screen in NSScreen.screens {
-                        if screen.frame.contains(mouseLocation) {
-                            if let uuid = screen.displayUUID, let screenViewModel = self.viewModels[uuid] {
-                                viewModel = screenViewModel
-                                break
-                            }
-                        }
-                    }
-                }
-
-                self.closeNotchTask?.cancel()
-                self.closeNotchTask = nil
-
-                switch viewModel.notchState {
+            Task { @MainActor [weak self] in
+                guard let self, !self.onboardingActive else { return }
+                let target = self.targetScreenContext()
+                switch target.viewModel.notchState {
                 case .closed:
-                    await MainActor.run {
-                        viewModel.open()
-                    }
-
-                    let task = Task { [weak viewModel] in
-                        do {
-                            try await Task.sleep(for: .seconds(3))
-                            await MainActor.run {
-                                viewModel?.close()
-                            }
-                        } catch { }
-                    }
-                    self.closeNotchTask = task
+                    target.viewModel.open(pinned: true)
+                    self.focusNotchWindowForKeyboard(screenUUID: target.viewModel.screenUUID)
                 case .open:
-                    await MainActor.run {
-                        viewModel.close()
-                    }
+                    target.viewModel.close()
                 }
             }
         }
@@ -669,6 +837,7 @@ extension Notification.Name {
     static let showOnAllDisplaysChanged = Notification.Name("showOnAllDisplaysChanged")
     static let automaticallySwitchDisplayChanged = Notification.Name("automaticallySwitchDisplayChanged")
     static let expandedDragDetectionChanged = Notification.Name("expandedDragDetectionChanged")
+    static let coveQuickNoteRequested = Notification.Name("CoveQuickNoteRequested")
 }
 
 extension CGRect: @retroactive Hashable {

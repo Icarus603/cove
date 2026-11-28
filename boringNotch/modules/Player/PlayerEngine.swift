@@ -10,6 +10,8 @@
 import AVFoundation
 import Combine
 import Foundation
+import MediaPlayer
+import os
 
 enum PlayerState: Equatable {
     /// Nothing loaded (or stopped).
@@ -83,6 +85,8 @@ final class PlayerEngine: ObservableObject {
     private var libraryObserver: AnyCancellable?
     private var startWhenReady = false
     private var resumeAt: TimeInterval = 0
+    private var remoteCommandsInstalled = false
+    private let log = Logger(subsystem: "app.cove.notch", category: "PlayerEngine")
 
     /// True once something has been played this session: the mini player and the controls are shown from then on.
     var hasSession: Bool { current != nil && state != .stopped }
@@ -137,6 +141,7 @@ final class PlayerEngine: ObservableObject {
 
     /// Play, or pause when playing; with nothing loaded, picks up the last session.
     func togglePlayPause() {
+        log.notice("togglePlayPause state=\(String(describing: self.state), privacy: .public) item=\(self.current?.title ?? "nil", privacy: .public)")
         switch state {
         case .playing: pause()
         case .paused: resumePlayback()
@@ -152,14 +157,24 @@ final class PlayerEngine: ObservableObject {
         guard state == .playing else { return }
         player.pause()
         setState(.paused, "pause()")
+        publishNowPlayingInfo(isPlaying: false)
         persistProgress()
     }
 
     func resumePlayback() {
         guard state == .paused else { return }
-        player.play()
+        guard player.currentItem != nil else {
+            if let id = queue.current ?? current?.id {
+                consecutiveFailures = 0
+                load(id, autoplay: true, resume: true)
+            }
+            return
+        }
+        pauseExternalMediaIfPlaying()
+        player.defaultRate = rate
         player.rate = rate
         setState(.playing, "resumePlayback()")
+        publishNowPlayingInfo(isPlaying: true)
     }
 
     func stop() {
@@ -170,6 +185,7 @@ final class PlayerEngine: ObservableObject {
         setState(.stopped, "stop()")
         time = 0
         audioTracks = []; subtitleTracks = []
+        clearNowPlayingInfo()
     }
 
     // MARK: Moving
@@ -193,6 +209,9 @@ final class PlayerEngine: ObservableObject {
         time = target
         let tolerance: CMTime = precise ? .zero : CMTime(seconds: 0.5, preferredTimescale: 600)
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance)
+        if state == .playing || state == .paused {
+            publishNowPlayingInfo(isPlaying: state == .playing)
+        }
     }
 
     func skip(by seconds: TimeInterval) { seek(to: time + seconds) }
@@ -219,7 +238,10 @@ final class PlayerEngine: ObservableObject {
     func setRate(_ value: Float) {
         rate = value
         player.defaultRate = value
-        if state == .playing { player.rate = value }
+        if state == .playing {
+            player.rate = value
+            publishNowPlayingInfo(isPlaying: true)
+        }
     }
 
     // MARK: Queue
@@ -317,13 +339,16 @@ final class PlayerEngine: ObservableObject {
         let finish = { [weak self] in
             guard let self, self.current?.id == id else { return }
             if go {
+                self.pauseExternalMediaIfPlaying()
                 self.player.defaultRate = self.rate
                 self.player.play()
                 self.player.rate = self.rate
                 self.setState(.playing, "itemReady autoplay")
+                self.publishNowPlayingInfo(isPlaying: true)
                 self.library.recordPlay(id)
             } else {
                 self.setState(.paused, "itemReady without autoplay (startWhenReady=false)")
+                self.publishNowPlayingInfo(isPlaying: false)
             }
         }
         if begin > 0 {
@@ -364,8 +389,10 @@ final class PlayerEngine: ObservableObject {
         publishQueue()
         if target == id {
             seek(to: 0)
+            pauseExternalMediaIfPlaying()
             player.play(); player.rate = rate
             setState(.playing, "repeat one")
+            publishNowPlayingInfo(isPlaying: true)
             library.recordPlay(id)
         } else {
             load(target, autoplay: true, resume: false)
@@ -377,6 +404,7 @@ final class PlayerEngine: ObservableObject {
         player.pause()
         setState(.paused, "stopAtEnd")
         seek(to: 0)
+        publishNowPlayingInfo(isPlaying: false)
     }
 
     /// A file that cannot be played. When playback was running the next one is tried (at most once around the queue), so
@@ -391,6 +419,95 @@ final class PlayerEngine: ObservableObject {
         }
         player.pause()
         setState(.failed(reason), "fail")
+        publishNowPlayingInfo(isPlaying: false)
+    }
+
+    // MARK: System Now Playing & Media Keys
+
+    private func pauseExternalMediaIfPlaying() {
+        guard MusicManager.shared.isPlaying else { return }
+        let externalBundle = MusicManager.shared.bundleIdentifier?.lowercased() ?? ""
+        if externalBundle == "com.spotify.client" {
+            MusicManager.shared.isPlaying = false
+            Task { await SpotifyController().pause() }
+        } else if externalBundle == "com.apple.music" {
+            MusicManager.shared.isPlaying = false
+            Task { await AppleMusicController().pause() }
+        }
+    }
+
+    private func installRemoteCommandsIfNeeded() {
+        guard !remoteCommandsInstalled else { return }
+        remoteCommandsInstalled = true
+        let commands = MPRemoteCommandCenter.shared()
+        commands.playCommand.addTarget { [weak self] _ in
+            Task { @MainActor [weak self] in self?.resumePlayback() }
+            return .success
+        }
+        commands.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor [weak self] in self?.pause() }
+            return .success
+        }
+        commands.togglePlayPauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor [weak self] in self?.togglePlayPause() }
+            return .success
+        }
+        commands.nextTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor [weak self] in self?.next() }
+            return .success
+        }
+        commands.previousTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor [weak self] in self?.previous() }
+            return .success
+        }
+        commands.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let posEvent = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            let target = posEvent.positionTime
+            Task { @MainActor [weak self] in self?.seek(to: target) }
+            return .success
+        }
+    }
+
+    private func setRemoteCommandsEnabled(_ enabled: Bool) {
+        let commands = MPRemoteCommandCenter.shared()
+        commands.playCommand.isEnabled = enabled
+        commands.pauseCommand.isEnabled = enabled
+        commands.togglePlayPauseCommand.isEnabled = enabled
+        commands.nextTrackCommand.isEnabled = enabled
+        commands.previousTrackCommand.isEnabled = enabled
+        commands.changePlaybackPositionCommand.isEnabled = enabled
+    }
+
+    private func publishNowPlayingInfo(isPlaying: Bool) {
+        guard let item = current else { return }
+        installRemoteCommandsIfNeeded()
+        setRemoteCommandsEnabled(true)
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: item.title,
+            MPMediaItemPropertyPlaybackDuration: duration,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: time,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(rate) : 0.0,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: Double(rate),
+        ]
+        if !item.artist.isEmpty {
+            info[MPMediaItemPropertyArtist] = item.artist
+        }
+        if !item.album.isEmpty {
+            info[MPMediaItemPropertyAlbumTitle] = item.album
+        }
+        if let artwork = library.artwork(for: item) {
+            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: artwork.size) { _ in artwork }
+        }
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = info
+        center.playbackState = isPlaying ? .playing : .paused
+    }
+
+    private func clearNowPlayingInfo() {
+        setRemoteCommandsEnabled(false)
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = nil
+        center.playbackState = .stopped
     }
 
     // MARK: Clock and progress

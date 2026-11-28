@@ -8,6 +8,7 @@
 import AgentHub
 import AppKit
 import Combine
+import Defaults
 import KeyboardShortcuts
 import NotchKit
 import SwiftUI
@@ -21,7 +22,11 @@ enum AppModules {
 
     /// The one registry shared by every screen's notch.
     static let registry: ModuleRegistry = {
-        let disabled = Set(UserDefaults.standard.stringArray(forKey: disabledKey) ?? [])
+        var disabled = Set(UserDefaults.standard.stringArray(forKey: disabledKey) ?? [])
+        if UserDefaults.standard.object(forKey: Defaults.Keys.boringShelf.name) != nil,
+           !Defaults[.boringShelf] {
+            disabled.insert(NotchViews.shelf.id)
+        }
         let registry = ModuleRegistry(disabledIDs: disabled)
         registry.register(HomeModule())
         registry.register(ShelfModule())
@@ -42,6 +47,7 @@ enum AppModules {
     private static var lastAttention: ModuleAttention = .none
     /// The notch was opened by a module that needed the user, not by the user.
     private static var openedForAttention = false
+    static var isOpenedForAttention: Bool { openedForAttention }
     private static var bootstrapped = false
 
     static func bootstrap() {
@@ -49,13 +55,26 @@ enum AppModules {
         bootstrapped = true
         _ = registry
 
-        AgentRuntime.shared.presentHost = { present(moduleID: "builtin.agents") }
+        AgentRuntime.shared.presentHost = {
+            present(moduleID: "builtin.agents", pinned: true)
+            AppDelegate.current?.focusNotchWindowForKeyboard()
+        }
+        AgentRuntime.shared.dismissHost = {
+            openedForAttention = false
+            AppDelegate.current?.closeNotchEverywhere()
+        }
         // The desktop pet's "Open in the notch": the user asked for it, so it stays open (it is not an attention pop-up).
         AgentsModule.onOpenInNotch = {
             BoringViewCoordinator.shared.currentView = NotchViews(id: "builtin.agents")
-            AppDelegate.current?.openNotchEverywhere()
+            AppDelegate.current?.openNotchEverywhere(pinned: true)
+            AppDelegate.current?.focusNotchWindowForKeyboard()
         }
         AgentRuntime.shared.isHostOnScreen = { AppDelegate.current?.isAnyNotchOpen ?? false }
+
+        let shelfEnabled = !registry.disabledIDs.contains(NotchViews.shelf.id)
+        if Defaults[.boringShelf] != shelfEnabled {
+            Defaults[.boringShelf] = shelfEnabled
+        }
 
         // Agent shortcuts are recorded in Settings → Shortcuts like the host's own.
         let bindings: [(KeyboardShortcuts.Name, AgentRuntime.Shortcut)] = [
@@ -64,6 +83,9 @@ enum AppModules {
         ]
         for (name, action) in bindings {
             KeyboardShortcuts.onKeyDown(for: name) { AgentRuntime.shared.perform(action) }
+        }
+        KeyboardShortcuts.onKeyDown(for: .quickNote) {
+            AppDelegate.current?.openNotchForQuickNote()
         }
 
         // A module that needs the user (an approval, a question) brings the notch up on its tab.
@@ -91,11 +113,11 @@ enum AppModules {
         present(moduleID: module.id)
     }
 
-    static func present(moduleID: String) {
+    static func present(moduleID: String, pinned: Bool = false) {
         BoringViewCoordinator.shared.currentView = NotchViews(id: moduleID)
         let wasOpen = AppDelegate.current?.isAnyNotchOpen ?? false
-        AppDelegate.current?.openNotchEverywhere()
-        if !wasOpen { openedForAttention = true }
+        AppDelegate.current?.openNotchEverywhere(pinned: pinned)
+        if !wasOpen && !pinned { openedForAttention = true }
     }
 
     // One view model exists per screen but the registry is shared, so modules
@@ -117,6 +139,9 @@ enum AppModules {
     static func setEnabled(_ enabled: Bool, id: String) {
         registry.setEnabled(enabled, id: id)
         UserDefaults.standard.set(registry.disabledIDs.sorted(), forKey: disabledKey)
+        if id == NotchViews.shelf.id, Defaults[.boringShelf] != enabled {
+            Defaults[.boringShelf] = enabled
+        }
     }
 
     /// The Agents tab shows CodeIsland's collapsed bar (the mascot) beside the closed notch: while an agent

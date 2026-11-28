@@ -17,9 +17,11 @@ enum ShelfActionService {
         case .file(let bookmark):
             handleBookmarkedFile(bookmark) { url in
                 NSWorkspace.shared.open(url)
+                Task { @MainActor in AppDelegate.current?.closeNotchEverywhere() }
             }
         case .link(let url):
             NSWorkspace.shared.open(url)
+            AppDelegate.current?.closeNotchEverywhere()
         case .text(let string):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(string, forType: .string)
@@ -30,6 +32,7 @@ enum ShelfActionService {
         guard case .file(let bookmark) = item.kind else { return }
         handleBookmarkedFile(bookmark) { url in
             NSWorkspace.shared.activateFileViewerSelecting([url])
+            Task { @MainActor in AppDelegate.current?.closeNotchEverywhere() }
         }
     }
 
