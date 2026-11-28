@@ -58,6 +58,25 @@ Requires **macOS 14 or later**. Built for Apple Silicon.
    tabs you see, and the pages under **Features** set up each one.
 5. **Make it yours.** **Settings → Advanced** has a custom accent colour; every sidebar, button and focus ring follows it.
 
+### Keyboard shortcuts
+
+Set the two global shortcuts in **Settings → Shortcuts**. Everything else works while the notch is open.
+
+| Where | Keys | What it does |
+| --- | --- | --- |
+| Anywhere | **⌘⇧I** (changeable) | Open the notch and keep it open; press again to close |
+| Anywhere | Quick Note (you pick the keys) | Open Notes with a new note, ready to type |
+| Open notch | **Esc** | Close the notch |
+| Open notch | **⌘1** – **⌘9** | Jump to the 1st – 9th tab |
+| Open notch | **⌘[** and **⌘]** | Previous and next tab |
+| Player tab | **Space** | Play or pause |
+| Player tab | **←** and **→** | Back or forward 5 seconds |
+| Player tab | **↑** and **↓** | Volume up or down |
+| Player tab | **M**, **F**, **N**, **P** | Mute, full screen, next, previous |
+
+A notch opened with a shortcut, or one you have clicked inside, stays open until you press **Esc** or click outside it.
+Keys are left alone while you are typing in a note or a search field.
+
 ### Play your own audio and video (Player)
 
 1. Open the **Player** tab and press **＋ Add**. Choose files or whole folders (subfolders are included). Cove reads tags and
