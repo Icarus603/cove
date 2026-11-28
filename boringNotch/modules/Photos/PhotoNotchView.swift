@@ -16,7 +16,6 @@ final class PhotoNotchModel: ObservableObject {
 
     @Published var scope: PhotoScope = PhotoScope.saved { didSet { PhotoScope.saved = scope; reload() } }
     @Published private(set) var ids: [Int64] = []
-    @Published var isDropTargeted = false
     private var observer: AnyCancellable?
     private var task: Task<Void, Never>?
 
@@ -61,14 +60,6 @@ struct PhotoNotchView: View {
                 }
             }
             .padding(.horizontal, 6)
-        }
-        .overlay {
-            if model.isDropTargeted {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.effectiveAccent.opacity(0.9), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
-                    .padding(2)
-                    .allowsHitTesting(false)
-            }
         }
     }
 

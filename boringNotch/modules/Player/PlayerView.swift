@@ -31,14 +31,6 @@ struct PlayerView: View {
             }
         }
         .onAppear { ui.validateFilter() }
-        .overlay {
-            if ui.isDropTargeted && !showsVideo {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.effectiveAccent.opacity(0.9), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
-                    .padding(2)
-                    .allowsHitTesting(false)
-            }
-        }
     }
 }
 

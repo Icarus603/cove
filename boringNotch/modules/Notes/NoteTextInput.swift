@@ -28,7 +28,6 @@ final class NoteTextInputController: NSObject, NSTextViewDelegate, NSWindowDeleg
     private var holdsInteraction = false
     private weak var anchor: AnchorBox?
     private var monitors: [Any] = []
-    private var savedPresentation: NSApplication.PresentationOptions?
 
     var isEditing: Bool { panel != nil }
 
@@ -98,10 +97,7 @@ final class NoteTextInputController: NSObject, NSTextViewDelegate, NSWindowDeleg
         holdsInteraction = true
         // Taking the keyboard makes Cove the active app, and over a full-screen app macOS answers by sliding the hidden menu bar
         // down for an instant. Keeping it hidden for the time the panel is up stops that flash.
-        if !NSMenu.menuBarVisible(), savedPresentation == nil {
-            savedPresentation = NSApp.presentationOptions
-            NSApp.presentationOptions = [.hideDock, .hideMenuBar]
-        }
+        KeyboardPresentation.acquire(self)
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(view)
         installMonitors()
@@ -130,7 +126,7 @@ final class NoteTextInputController: NSObject, NSTextViewDelegate, NSWindowDeleg
         panel.orderOut(nil)
         removeMonitors()
         anchor = nil
-        if let saved = savedPresentation { NSApp.presentationOptions = saved; savedPresentation = nil }
+        KeyboardPresentation.release(self)
         if holdsInteraction { holdsInteraction = false; SharingStateManager.shared.endInteraction() }
         endHandler?()
     }

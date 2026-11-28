@@ -47,7 +47,6 @@ final class PlayerUI: ObservableObject {
     @Published var mode: Mode = .library
     @Published var isPoppedOut = false
     @Published var isFullScreen = false
-    @Published var isDropTargeted = false
     /// The controls over a playing video fade away when nothing has happened for a moment. Shared by the notch and the window
     /// so the keyboard can bring them back too.
     @Published var controlsVisible = true

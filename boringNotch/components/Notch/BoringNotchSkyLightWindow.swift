@@ -108,7 +108,6 @@ class BoringNotchSkyLightWindow: NSPanel {
     }
     
     private var observers: Set<AnyCancellable> = []
-    private var savedPresentation: NSApplication.PresentationOptions?
     weak var notchViewModel: BoringViewModel?
     var allowKeyInput: Bool = false
 
@@ -135,10 +134,7 @@ class BoringNotchSkyLightWindow: NSPanel {
 
     func beginKeyInput() {
         allowKeyInput = true
-        if !NSMenu.menuBarVisible(), savedPresentation == nil {
-            savedPresentation = NSApp.presentationOptions
-            NSApp.presentationOptions = [.hideDock, .hideMenuBar]
-        }
+        KeyboardPresentation.acquire(self)
         NSApp.activate(ignoringOtherApps: true)
         makeKeyAndOrderFront(nil)
         if let contentView, firstResponder == nil || firstResponder === self {
@@ -146,37 +142,9 @@ class BoringNotchSkyLightWindow: NSPanel {
         }
     }
 
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if AppDelegate.current?.handleNotchKeyDown(event) == nil {
-            return true
-        }
-        return super.performKeyEquivalent(with: event)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        if AppDelegate.current?.handleNotchKeyDown(event) == nil {
-            return
-        }
-        super.keyDown(with: event)
-    }
-
-    override func cancelOperation(_ sender: Any?) {
-        if let delegate = AppDelegate.current,
-           delegate.isAnyNotchOpen,
-           !NoteTextInputController.shared.isEditing,
-           !NotchTextInputController.shared.isEditing {
-            delegate.closeNotchEverywhere()
-        }
-    }
-
     func endKeyInput(deactivateIfPossible: Bool = true) {
         allowKeyInput = false
-        if !NoteTextInputController.shared.isEditing,
-           !NotchTextInputController.shared.isEditing,
-           let saved = savedPresentation {
-            NSApp.presentationOptions = saved
-            savedPresentation = nil
-        }
+        KeyboardPresentation.release(self)
         if isKeyWindow {
             resignKey()
         }
@@ -192,11 +160,29 @@ class BoringNotchSkyLightWindow: NSPanel {
     override func resignKey() {
         super.resignKey()
         allowKeyInput = false
-        if !NoteTextInputController.shared.isEditing,
-           !NotchTextInputController.shared.isEditing,
-           let saved = savedPresentation {
-            NSApp.presentationOptions = saved
-            savedPresentation = nil
+        KeyboardPresentation.release(self)
+    }
+}
+
+/// Hides the Dock and menu bar while Cove holds the keyboard over a full-screen app, so activating Cove does not make macOS slide
+/// the menu bar down for an instant. The notch window and both text panels need it at the same time, so it is shared and counted:
+/// the original options are saved by the first holder and restored only when the last one lets go.
+@MainActor
+enum KeyboardPresentation {
+    private static var holders: Set<ObjectIdentifier> = []
+    private static var saved: NSApplication.PresentationOptions?
+
+    static func acquire(_ owner: AnyObject) {
+        if holders.isEmpty, !NSMenu.menuBarVisible() {
+            saved = NSApp.presentationOptions
+            NSApp.presentationOptions = [.hideDock, .hideMenuBar]
         }
+        holders.insert(ObjectIdentifier(owner))
+    }
+
+    static func release(_ owner: AnyObject) {
+        guard holders.remove(ObjectIdentifier(owner)) != nil, holders.isEmpty, let saved else { return }
+        NSApp.presentationOptions = saved
+        self.saved = nil
     }
 }

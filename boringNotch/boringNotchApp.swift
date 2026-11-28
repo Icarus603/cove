@@ -159,10 +159,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func installNotchKeyMonitor() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            nonisolated(unsafe) var result: NSEvent? = event
             MainActor.assumeIsolated {
-                guard let self else { return event }
-                return self.handleNotchKeyDown(event)
+                if let self { result = self.handleNotchKeyDown(event) }
             }
+            return result
         }
     }
 
